@@ -11,7 +11,7 @@
 
   var L = window.KTLogic;
   var API = window.KT_API_URL;
-  var VERSION = '1.3.0';
+  var VERSION = '1.4.0';
   var TIMEOUT_MS = 25000; // Apps Script répond parfois en 30 s ; l'écran, lui, a déjà réagi.
   var RETRY_MS = 30000;
   var BUSY_RETRY_MS = 5000;
@@ -252,9 +252,8 @@
     // Haut en bas = ordre d'usage : ce qui tourne, choisir un type, lancer, la journée, après coup.
     app.innerHTML = header(s) + hero(s) +
       section('Tâche', typeBar(s)) +
-      todayView(s) +
       section('Ajouter un bloc d’heures', blocks()) +
-      lastView(s);
+      todayView(s);
     tick();
   }
 
@@ -299,8 +298,9 @@
         '</section>';
     }
     var t = L.typeOf(r);
-    return '<section class="hero" style="--c:' + L.typeColor(s, t) + '">' +
-      '<div class="hero-project">' + esc(r.project) + ' · ' + esc(t) + '</div>' +
+    var c = L.typeColor(s, t);
+    return '<section class="hero">' +
+      '<div class="hero-project">' + esc(r.project) + ' · <span class="pill" style="background:' + c + ';color:' + L.textOn(c) + '">' + esc(t) + '</span></div>' +
       '<div class="hero-time" id="elapsed">' + L.elapsed(Date.now() - new Date(r.start).getTime()) + '</div>' +
       '<button class="stop" data-act="stop">STOP</button>' +
       grid(s) +
@@ -311,7 +311,7 @@
   function typeBar(s) {
     var cur = currentType();
     return '<div class="types">' + L.typesOf(s).map(function (t) {
-      return '<button class="type' + (t.name === cur ? ' on' : '') + '" style="--c:' + t.color + '" data-act="type" data-t="' + esc(t.name) + '">' + esc(t.name) + '</button>';
+      return '<button class="type' + (t.name === cur ? ' on' : '') + '" style="--c:' + t.color + ';--on:' + L.textOn(t.color) + '" data-act="type" data-t="' + esc(t.name) + '">' + esc(t.name) + '</button>';
     }).join('') + '</div>';
   }
 
@@ -339,10 +339,10 @@
     return html;
   }
 
-  // Les projets sont les boutons qui lancent le compteur : ▶, couleur du type qui sera utilisé.
+  // Les projets sont les boutons qui lancent le compteur : ▶, vert « lancer ».
   function projectButton(s, p) {
     var on = s.running && s.running.project === p;
-    return '<button class="proj play' + (on ? ' on' : '') + '" style="--c:' + L.typeColor(s, currentType()) + '" data-act="start" data-p="' + esc(p) + '">' +
+    return '<button class="proj play' + (on ? ' on' : '') + '" data-act="start" data-p="' + esc(p) + '">' +
       '<span class="proj-icon">' + (on ? '●' : '▶') + '</span><span class="proj-name">' + esc(p) + '</span>' +
       (on ? '<small>en cours</small>' : '') + '</button>';
   }
@@ -352,7 +352,7 @@
     var html = vp.shown.map(function (p) { return projectButton(s, p); }).join('');
     if (vp.more.length) {
       var hidden = s.running && vp.more.indexOf(s.running.project) >= 0;
-      html += '<button class="proj more' + (hidden ? ' on' : '') + '" style="--c:' + L.typeColor(s, currentType()) + '" data-act="more">' +
+      html += '<button class="proj play more' + (hidden ? ' on' : '') + '" data-act="more">' +
         (hidden ? '● ' + esc(s.running.project) : 'Plus…') + '</button>';
     }
     return '<div class="grid">' + html + '</div>';
@@ -364,25 +364,6 @@
         return '<button class="chip" data-act="block" data-v="' + h + '">' + h + ' h</button>';
       }).join('') + '</div>' +
       '<button class="link small" data-act="otherDay">Un autre jour…</button>';
-  }
-
-  function lastView(s) {
-    var l = s.last;
-    if (!l) return '';
-    var tags = (l.corrected ? ' <span class="tag">corrigé</span>' : '') + (l.source === 'claude' ? ' <span class="tag">Claude</span>' : '');
-    var day = L.dayLabel(l.date, Date.now());
-    var what = '<b>' + esc(l.project) + '</b> · ' + esc(L.typeOf(l));
-    if (l.start) {
-      return '<section class="last"><div class="last-title">Dernière entrée · ' + what + ' · ' + esc(day) + tags + '</div>' +
-        '<div class="last-times">' +
-        '<button class="time" data-act="editStart" aria-label="Corriger le début">' + L.clock(l.start) + '</button> → ' +
-        '<button class="time" data-act="editEnd" aria-label="Corriger la fin">' + L.clock(l.end) + '</button>' +
-        '<span class="muted">· ' + L.duration(l.hours) + '</span></div></section>';
-    }
-    return '<section class="last"><div class="last-title">Dernière entrée · ' + what + tags + '</div>' +
-      '<div class="last-times">' +
-      '<button class="time" data-act="editHours" aria-label="Corriger la durée">' + L.duration(l.hours) + '</button>' +
-      '<span class="muted">· ' + esc(day) + '</span></div></section>';
   }
 
   function tick() {
@@ -544,33 +525,6 @@
       act('logBlock', params);
     },
 
-    editStart: function () { editTime('start'); },
-    editEnd: function () { editTime('end'); },
-
-    editTimeSave: function (el) {
-      var field = el.dataset.field;
-      var value = document.getElementById('edit-time').value;
-      if (!value) return toast('Choisis une heure.');
-      var last = state.status.last;
-      closeDialog();
-      if (value === L.clock(field === 'start' ? last.start : last.end)) return;
-      act('editLast', { id: last.id, field: field, value: L.editedInstant(last, field, value) });
-    },
-
-    editHours: function () {
-      var last = state.status.last;
-      openDialog('<h2>Corriger la durée</h2><p>' + esc(last.project) + ' · ' + esc(L.dayLabel(last.date, Date.now())) + '</p>' +
-        '<div class="row blocks">' + L.BLOCK_HOURS.map(function (h) {
-          return '<button class="chip' + (h === last.hours ? ' on' : '') + '" data-act="editHoursSave" data-v="' + h + '">' + h + '</button>';
-        }).join('') + '</div>' + cancelButton());
-    },
-
-    editHoursSave: function (el) {
-      var last = state.status.last;
-      var h = Number(el.dataset.v);
-      closeDialog();
-      if (h !== last.hours) act('editLast', { id: last.id, field: 'hours', value: h });
-    },
 
     forgotSave: function () {
       var value = document.getElementById('forgot-end').value;
@@ -727,14 +681,6 @@
       return '<div class="line"><span class="dot"' + (i[2] ? ' style="background:' + i[2] + '"' : '') + '></span><span>' + esc(i[0]) + '</span>' +
         '<b>' + hoursLabel(i[1]) + '</b><span class="muted">' + Math.round(i[1] / (total || 1) * 100) + ' %</span></div>';
     }).join('') + '</div>';
-  }
-
-  function editTime(field) {
-    var last = state.status.last;
-    openDialog('<h2>' + (field === 'start' ? 'Corriger le début' : 'Corriger la fin') + '</h2>' +
-      '<p>' + esc(last.project) + ' · ' + L.clock(last.start) + ' → ' + L.clock(last.end) + '</p>' +
-      '<input class="field" id="edit-time" type="time" value="' + L.clock(field === 'start' ? last.start : last.end) + '">' +
-      '<div class="actions">' + cancelButton() + '<button class="primary" data-act="editTimeSave" data-field="' + field + '">Corriger</button></div>');
   }
 
   // ---- Événements ----

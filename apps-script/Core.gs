@@ -19,14 +19,14 @@ var Core = (function () {
   var WRITE_ACTIONS = ['start', 'stop', 'note', 'logBlock', 'logSession', 'editLast', 'addProject'];
   // Types de travail, dans l'ordre d'affichage. Une ligne sans type (historique) vaut Misc.
   var TYPES = [
-    { name: 'Misc', color: '#9B20F9' },
-    { name: 'Art', color: '#EC4899' },
+    { name: 'Misc', color: '#8A8F98' },
+    { name: 'Art', color: '#22C55E' },
     { name: 'Dev', color: '#3B82F6' },
-    { name: 'Writing', color: '#22C55E' },
-    { name: 'UI', color: '#06B6D4' },
+    { name: 'Writing', color: '#EAB308' },
+    { name: 'UI', color: '#EC4899' },
     { name: 'Gameplay', color: '#F97316' },
-    { name: 'Sound', color: '#CA8A04' },
-    { name: 'Market', color: '#64748B' },
+    { name: 'Sound', color: '#18181B' },
+    { name: 'Market', color: '#8B5CF6' },
   ];
   var TYPE_NAMES = TYPES.map(function (t) { return t.name; });
   var DEFAULT_TYPE = 'Misc';

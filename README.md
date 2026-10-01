@@ -169,8 +169,7 @@ du temps continue d'arriver dans l'ancien fichier, que plus rien ne lit.
   flèches pour remonter le temps. Demande le réseau.
 - **Déclarer 2 à 12** : un bloc d'heures pour aujourd'hui, sans début ni fin, avec le type choisi.
   **Autre jour…** : un bloc pour une date passée.
-- **Dernier log** : un tap sur une heure ou une durée permet de la corriger. On ne corrige que son
-  propre dernier log, et chaque correction est tracée dans `_Corrections`.
+- **Corriger une heure** : directement dans la Sheet (l'app n'affiche plus la dernière entrée).
 - **Oubli** : si un compteur tourne depuis plus de 8 h à l'ouverture, l'app demande l'heure de fin
   avant toute autre chose.
 - **Point de couleur en haut à gauche** : vert synchronisé, orange en attente (hors ligne), rouge

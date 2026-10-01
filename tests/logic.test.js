@@ -182,3 +182,9 @@ test('anciens noms de type (état en cache) : Autre → Misc, Narration → Writ
   const g = L.aggregate([{ id: 'a', project: 'Fluffy', type: 'Narration', date: '2026-10-01', start: null, end: null, hours: 2 }], ['2026-10-01'], Date.now());
   assert.deepEqual(g.byType, { Writing: 2 });
 });
+
+test('texte lisible sur une couleur de tâche : sombre sur clair, blanc sur foncé', () => {
+  assert.equal(L.textOn('#EAB308'), '#17171b');
+  assert.equal(L.textOn('#18181B'), '#ffffff');
+  assert.equal(L.textOn('#3B82F6'), '#ffffff');
+});

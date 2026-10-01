@@ -25,14 +25,14 @@ Liste fixe, dans cet ordre : **Misc**, **Art**, **Dev**, **Writing**, **UI**, **
 
 | Type | Couleur |
 |---|---|
-| Misc | `#9B20F9` (violet du logo) |
-| Art | `#EC4899` (rose) |
+| Misc | `#8A8F98` (gris) |
+| Art | `#22C55E` (vert) |
 | Dev | `#3B82F6` (bleu) |
-| Writing | `#22C55E` (vert) |
-| UI | `#06B6D4` (cyan) |
+| Writing | `#EAB308` (jaune) |
+| UI | `#EC4899` (rose) |
 | Gameplay | `#F97316` (orange) |
-| Sound | `#CA8A04` (ambre) |
-| Market | `#64748B` (gris-bleu) |
+| Sound | `#18181B` (noir) |
+| Market | `#8B5CF6` (violet) |
 
 Les mêmes couleurs servent aux boutons de l'app, au widget, à la frise et aux récaps.
 
@@ -94,39 +94,38 @@ du récap.
 
 ### Écran principal
 
-L'écran se lit de haut en bas dans l'ordre de l'usage : ce qui tourne, choisir un type, lancer un
-projet, voir sa journée, ajouter du temps après coup, corriger la dernière entrée.
+L'écran se lit de haut en bas dans l'ordre de l'usage : le compteur et les projets qui le lancent,
+la tâche, ajouter du temps après coup, la journée et le récap.
 
 ```
 ● Amohs                                   ⚙
- ┌ Maintenant ─────────────────────────┐
- │        HEIRFALL · DEV                │   au repos : « Rien en cours —
- │          2:14:07                     │   choisis un type, puis lance
- │        [   STOP   ]                  │   un projet. »
+ ┌──────────────────────────────────────┐
+ │        HEIRFALL · (DEV)              │   au repos : « RIEN EN COURS »
+ │          2:14:07                     │   et 0:00:00 grisé
+ │        [   STOP   ]                  │   (pas de STOP)
+ │ [ ▶ Fluffy ]  [ ● Heirfall en cours ]│   boutons verts
  └──────────────────────────────────────┘
- TYPE
+ TÂCHE
  [Misc] [Art] [Dev] [Writing]
  [UI] [Gameplay] [Sound] [Market]
- LANCER
- [ ▶ Fluffy ]  [ ● Heirfall  en cours ]    couleur du type choisi
+ AJOUTER UN BLOC D'HEURES
+ [2 h] [4 h] [6 h] [8 h] [10 h] [12 h]  · Un autre jour…
  ┌ Aujourd'hui  5 h 42          Récap ┐
  │ ▕██▓▓▓░░██████▓▓▏                   │
  └──────────────────────────────────────┘
- AJOUTER DES HEURES
- [2] [4] [6] [8] [10] [12]  · Autre jour…
- ┌ Dernière entrée · Heirfall · Dev ───┐
- │ 09:12 → 12:40 · 3 h 28              │
- └──────────────────────────────────────┘
 ```
 
-- **Sélecteur de type** : un bouton par type (quatre par rangée), aux couleurs des types ; le type
-  choisi est plein, les autres atténués. Compteur en cours : un tap bascule le type (requête
-  `start` sur le projet en cours). Compteur arrêté : un tap choisit le type du prochain lancement.
-  Le type choisi est gardé sur l'appareil.
-- **Projets** (section « Lancer ») : ce sont les boutons qui démarrent le compteur. Chacun porte ▶
-  et prend la couleur du type choisi ; le projet en cours est plein, marqué « ● en cours ». Un tap
-  lance le projet avec le type choisi (bascule si un autre tourne). Les projets sont les onglets de
-  la Sheet (Fluffy, Heirfall…) ; un nouveau se crée par ⚙ → + Projet.
+- **Sélecteur de tâche** : un bouton par type (quatre par rangée), aux couleurs des types ; le type
+  choisi est plein et cerclé (la tâche Sound, noire, resterait sinon invisible en mode sombre), les
+  autres atténués ; le texte passe en sombre sur une couleur claire. Compteur en cours : un tap
+  bascule le type (requête `start` sur le projet en cours). Compteur arrêté : un tap choisit le type
+  du prochain lancement. Le type choisi est gardé sur l'appareil.
+- **Projets** : dans la carte du compteur, ce sont les boutons qui le démarrent. Chacun porte ▶ et
+  est vert (« lancer ») ; le projet en cours est cerclé et marqué « ● en cours ». Un tap lance le
+  projet avec le type choisi (bascule si un autre tourne). Les projets sont les onglets de la Sheet
+  (Fluffy, Heirfall…) ; un nouveau se crée par ⚙ → + Projet.
+- **Pas de « dernière entrée »** : l'app ne corrige plus les heures ; une correction se fait dans la
+  Sheet (l'action `editLast` reste disponible pour l'agent).
 - **Studio** : plus de bouton spécial. L'onglet nommé dans `_Config` (« Onglet studio ») n'apparaît
   parmi les projets que si le réglage **⚙ → Afficher Studio** est coché. Réglage gardé sur
   l'appareil, décoché par défaut. Masqué ou non, son historique compte dans les totaux et récaps.

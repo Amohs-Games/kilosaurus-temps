@@ -162,19 +162,14 @@ async function main() {
   await page.click('[data-act="stop"]');
   await page.waitFor('document.querySelector(".hero.idle") && document.querySelector(".sync-ok")', 'arrêt');
 
-  console.log('Bloc et correction de durée');
+  console.log('Bloc');
   await page.click('[data-act="block"][data-v="8"]');
   await page.waitFor('document.querySelector("dialog[open] [data-act=blockSave]")', 'choix du projet');
   await page.shot('03-bloc');
   await page.click('dialog [data-act="blockSave"][data-p="Proto"]');
-  await page.waitFor('document.querySelector(".sync-ok") && document.querySelector("[data-act=editHours]")', 'bloc');
+  await page.waitFor('document.querySelector(".sync-ok") && !document.querySelector("dialog[open]")', 'bloc');
   s = await api(P, { ...me, action: 'status' });
   check(s.last?.project === 'Proto' && s.last?.hours === 8 && !s.last?.start, 'serveur : bloc de 8 h sur Proto');
-  await page.click('[data-act="editHours"]');
-  await page.click('dialog [data-act="editHoursSave"][data-v="6"]');
-  await page.waitFor('document.querySelector(".sync-ok") && document.querySelector(".tag")', 'correction');
-  s = await api(P, { ...me, action: 'status' });
-  check(s.last?.hours === 6 && s.last?.corrected, 'serveur : bloc corrigé à 6 h');
 
   console.log('Autre jour');
   await page.click('[data-act="otherDay"]');
@@ -220,14 +215,15 @@ async function main() {
 
   console.log('Refus du serveur');
   await page.click('[data-act="stop"]');
-  await page.waitFor('document.querySelector(".sync-ok") && document.querySelector("[data-act=editEnd]")', 'arrêt');
-  await page.click('[data-act="editEnd"]');
-  const future = await page.evaluate('(() => { const d = new Date(Date.now() + 2 * 3600000); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); })()');
-  await page.evaluate(`document.getElementById("edit-time").value = "${future}"`);
-  await page.click('[data-act="editTimeSave"]');
+  await page.waitFor('document.querySelector(".hero.idle") && document.querySelector(".sync-ok")', 'arrêt');
+  await page.click('[data-act="menu"]');
+  await page.click('dialog [data-act="addProject"]');
+  await page.evaluate('document.getElementById("project-name").value = "fluffy"');
+  await page.click('[data-act="addProjectSave"]');
   await page.waitFor('document.getElementById("toast").classList.contains("show")', 'message de refus');
-  check(/Refusé/.test(await page.evaluate('document.getElementById("toast").textContent')), 'une fin dans le futur est refusée et signalée');
-  await page.waitFor('document.querySelector(".sync-ok") && !document.querySelector(".last .tag")', 'état rechargé après refus');
+  check(/Refusé/.test(await page.evaluate('document.getElementById("toast").textContent')), 'un nom de projet déjà pris est refusé et signalé');
+  await page.waitFor('document.querySelector(".sync-ok")', 'état rechargé après refus');
+  check(!(await api(P, { ...me, action: 'status' })).projects.includes('fluffy'), 'serveur : aucun onglet en double');
 
   check(page.errors.length === 0, 'aucune erreur JavaScript' + (page.errors.length ? ' : ' + page.errors.join(' | ') : ''));
   page.close();

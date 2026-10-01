@@ -8,14 +8,14 @@
   var BLOCK_HOURS = [2, 4, 6, 8, 10, 12];
   // Copie de la liste du serveur (Core.gs), pour un état mis en cache par une version sans types.
   var DEFAULT_TYPES = [
-    { name: 'Misc', color: '#9B20F9' },
-    { name: 'Art', color: '#EC4899' },
+    { name: 'Misc', color: '#8A8F98' },
+    { name: 'Art', color: '#22C55E' },
     { name: 'Dev', color: '#3B82F6' },
-    { name: 'Writing', color: '#22C55E' },
-    { name: 'UI', color: '#06B6D4' },
+    { name: 'Writing', color: '#EAB308' },
+    { name: 'UI', color: '#EC4899' },
     { name: 'Gameplay', color: '#F97316' },
-    { name: 'Sound', color: '#CA8A04' },
-    { name: 'Market', color: '#64748B' },
+    { name: 'Sound', color: '#18181B' },
+    { name: 'Market', color: '#8B5CF6' },
   ];
   var DEFAULT_TYPE = 'Misc';
   // Noms de la première version, encore possibles dans un état ou un réglage mis en cache.
@@ -31,6 +31,13 @@
   function typeColor(s, name) {
     var t = typesOf(s).filter(function (x) { return x.name === name; })[0];
     return t ? t.color : DEFAULT_TYPES[0].color;
+  }
+
+  // Couleur du texte posé sur une couleur de tâche : sombre sur une couleur claire (jaune…), blanc sinon.
+  function textOn(hex) {
+    var n = parseInt(String(hex).replace('#', ''), 16);
+    var lum = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+    return lum > 0.6 ? '#17171b' : '#ffffff';
   }
 
   function startOfDay(ms) { var d = new Date(ms); d.setHours(0, 0, 0, 0); return d.getTime(); }
@@ -263,7 +270,7 @@
     elapsed: elapsed, duration: duration, clock: clock, dayLabel: dayLabel,
     editedInstant: editedInstant, visibleProjects: visibleProjects, pickableProjects: pickableProjects,
     isForgotten: isForgotten, applyLocal: applyLocal,
-    typesOf: typesOf, typeOf: typeOf, typeColor: typeColor, rowHours: rowHours, todayTotal: todayTotal,
+    typesOf: typesOf, typeOf: typeOf, typeColor: typeColor, textOn: textOn, rowHours: rowHours, todayTotal: todayTotal,
     dayTimeline: dayTimeline, weekRange: weekRange, monthRange: monthRange, aggregate: aggregate, recapMatches: recapMatches,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
