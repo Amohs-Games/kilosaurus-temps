@@ -45,7 +45,8 @@ button { cursor: pointer; border: 0; background: none; padding: 0; }
 #app {
   max-width: 480px;
   margin: 0 auto;
-  padding: max(12px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+  padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+           max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -210,7 +211,7 @@ dialog {
   border: 0;
   padding: 0;
   width: min(440px, calc(100vw - 32px));
-  max-height: calc(100vh - 48px);
+  max-height: calc(100vh - 48px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   border-radius: 20px;
   background: var(--card);
   color: var(--fg);

@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.DisplayCutout;
 import android.view.View;
 import android.view.WindowInsets;
 import android.webkit.JavascriptInterface;
@@ -12,6 +13,7 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -51,8 +53,12 @@ public class MainActivity extends Activity {
                 }
             }
         });
-        padForSystemBars(web);
-        setContentView(web);
+        // Les marges des barres système vont sur un cadre autour de la page : une WebView dessine
+        // son contenu sans tenir compte de ses propres marges.
+        FrameLayout root = new FrameLayout(this);
+        root.addView(web, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        padForSystemBars(root);
+        setContentView(root);
         if (state == null) web.loadUrl("https://" + APP_HOST + "/index.html");
         else web.restoreState(state);
     }
@@ -83,14 +89,21 @@ public class MainActivity extends Activity {
         view.setOnApplyWindowInsetsListener((v, insets) -> {
             int top, bottom, left, right;
             if (Build.VERSION.SDK_INT >= 30) {
-                android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.ime());
+                android.graphics.Insets bars = insets.getInsets(
+                    WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout() | WindowInsets.Type.ime());
                 top = bars.top; bottom = bars.bottom; left = bars.left; right = bars.right;
             } else {
                 top = insets.getSystemWindowInsetTop(); bottom = insets.getSystemWindowInsetBottom();
                 left = insets.getSystemWindowInsetLeft(); right = insets.getSystemWindowInsetRight();
+                DisplayCutout cut = Build.VERSION.SDK_INT >= 28 ? insets.getDisplayCutout() : null;
+                if (cut != null) {
+                    top = Math.max(top, cut.getSafeInsetTop()); bottom = Math.max(bottom, cut.getSafeInsetBottom());
+                    left = Math.max(left, cut.getSafeInsetLeft()); right = Math.max(right, cut.getSafeInsetRight());
+                }
             }
             v.setPadding(left, top, right, bottom);
-            return insets;
+            // Consommées ici : la page ne les ajoute pas une seconde fois (env(safe-area-inset-*)).
+            return Build.VERSION.SDK_INT >= 30 ? WindowInsets.CONSUMED : insets.consumeSystemWindowInsets();
         });
     }
 
