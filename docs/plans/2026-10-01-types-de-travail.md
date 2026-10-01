@@ -1341,6 +1341,61 @@ git commit -m "feat : le logo Kilosaurus devient l'icône de l'app web et de l'A
 
 ---
 
+### Task 7 bis: Zones de sécurité (encoche, barre d'état, barre de navigation)
+
+Bug signalé : l'app ne respecte pas les zones de sécurité. Cause dans l'APK : les marges sont posées
+sur la `WebView` elle-même (`padForSystemBars`), qui dessine son contenu sans en tenir compte, et
+l'encoche (`displayCutout`) n'est pas comptée. Côté web, seuls le haut et le bas de `#app` sont
+protégés.
+
+**Files:**
+- Modify: `android/src/com/kilosaurus/temps/MainActivity.java`, `web/style.css`
+
+- [ ] **Step 1: APK** — envelopper la `WebView` dans un `FrameLayout` qui reçoit les marges, et
+  consommer les insets pour que la page ne les ajoute pas une seconde fois :
+
+```java
+        FrameLayout root = new FrameLayout(this);
+        root.addView(web, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        padForSystemBars(root);
+        setContentView(root);
+```
+
+(à la place de `padForSystemBars(web); setContentView(web);`, avec `import android.widget.FrameLayout;`), et dans
+`padForSystemBars`, branche `SDK_INT >= 30` :
+
+```java
+                android.graphics.Insets bars = insets.getInsets(
+                    WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout() | WindowInsets.Type.ime());
+```
+
+branche ancienne : ajouter l'encoche avec `insets.getDisplayCutout()` (API 28+, `safeInsetTop` etc., en
+prenant le maximum avec les barres). Retourner `WindowInsets.CONSUMED` (API 30+) au lieu de `insets`.
+Le fond de la fenêtre (`windowBackground`) suit déjà le thème (`#131316` en sombre) : les bandes sous
+les barres prennent la bonne couleur sans autre changement.
+
+- [ ] **Step 2: Web** — dans `style.css`, `#app` :
+
+```css
+  padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+           max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+```
+
+et `dialog` : `max-height: calc(100vh - 48px - env(safe-area-inset-top) - env(safe-area-inset-bottom));`.
+
+- [ ] **Step 3: Vérifier** — `npm test`, `node tools/e2e.js`, construire l'APK. Sur le téléphone :
+  haut de l'écran (heure, batterie) et bas (barre de gestes) ne recouvrent plus rien, en clair et en
+  sombre, en portrait et en paysage.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add android web/style.css
+git commit -m "fix : l'app respecte les zones de sécurité (barres système, encoche)"
+```
+
+---
+
 ### Task 8: Docs, mise en ligne et projet Heirfall
 
 **Files:**
