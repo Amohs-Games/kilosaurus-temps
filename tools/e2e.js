@@ -225,6 +225,17 @@ async function main() {
   await page.waitFor('document.querySelector(".sync-ok")', 'état rechargé après refus');
   check(!(await api(P, { ...me, action: 'status' })).projects.includes('fluffy'), 'serveur : aucun onglet en double');
 
+  console.log('Version compacte (mini-fenêtre de bureau)');
+  await page.send('Emulation.setDeviceMetricsOverride', { width: 300, height: 420, deviceScaleFactor: 2, mobile: false });
+  await page.send('Page.navigate', { url: base + '/?mini=1' });
+  await page.waitFor('document.querySelector(".hero") && document.querySelector(".types")', 'compteur et tâches');
+  // Visible = réellement dessiné (un parent masqué compte), pas seulement le style propre.
+  const shown = (sel) => page.evaluate(`(() => { const el = document.querySelector(${JSON.stringify(sel)}); return !!el && el.getClientRects().length > 0; })()`);
+  check(await shown('.hero') && await shown('.types'), 'mini : compteur, projets et tâches affichés');
+  check(!(await shown('.today')) && !(await shown('.blocks')), 'mini : journée et blocs masqués');
+  check(await page.evaluate('document.documentElement.scrollWidth <= 300'), 'mini : rien ne dépasse en largeur');
+  await page.shot('11-mini');
+
   check(page.errors.length === 0, 'aucune erreur JavaScript' + (page.errors.length ? ' : ' + page.errors.join(' | ') : ''));
   page.close();
 

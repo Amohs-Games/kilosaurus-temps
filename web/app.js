@@ -11,13 +11,17 @@
 
   var L = window.KTLogic;
   var API = window.KT_API_URL;
-  var VERSION = '1.4.0';
+  var VERSION = '1.5.0';
   var TIMEOUT_MS = 25000; // Apps Script répond parfois en 30 s ; l'écran, lui, a déjà réagi.
   var RETRY_MS = 30000;
   var BUSY_RETRY_MS = 5000;
   var KEYS = { code: 'kt.code', status: 'kt.status', queue: 'kt.queue', type: 'kt.type', studio: 'kt.showStudio' };
   // L'URL d'API doit avoir été renseignée dans config.js (le modèle contient « REMPLACER »).
   var CONFIGURED = typeof API === 'string' && /^(https?:\/\/|\/)/.test(API) && API.indexOf('REMPLACER') < 0;
+  // Version compacte (?mini=1) pour la mini-fenêtre de bureau (dossier desktop/) : compteur, projets
+  // et tâches seulement. La fenêtre fournit window.ktDesktop (taille, verrou).
+  var MINI = /[?&]mini=1(&|$)/.test(location.search);
+  if (MINI) document.documentElement.classList.add('mini');
 
   // ---- Stockage local (peut être indisponible : navigation privée…) ----
 
@@ -240,6 +244,20 @@
   var GEAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
 
   function render() {
+    renderView();
+    fitDesktopWindow();
+  }
+
+  // Dans la mini-fenêtre de bureau, la fenêtre prend la hauteur du contenu.
+  function fitDesktopWindow() {
+    if (!MINI || !window.ktDesktop) return;
+    requestAnimationFrame(function () {
+      var box = document.getElementById('app').getBoundingClientRect();
+      window.ktDesktop.fit(Math.ceil(box.height));
+    });
+  }
+
+  function renderView() {
     var app = document.getElementById('app');
     if (!CONFIGURED) { app.innerHTML = setupView(); return; }
     if (!state.code) { app.innerHTML = loginView(); return; }
@@ -252,7 +270,7 @@
     // Haut en bas = ordre d'usage : ce qui tourne, choisir un type, lancer, la journée, après coup.
     app.innerHTML = header(s) + hero(s) +
       section('Tâche', typeBar(s)) +
-      section('Ajouter un bloc d’heures', blocks()) +
+      section('Ajouter un bloc d’heures', blocks(), 'add') +
       todayView(s);
     tick();
   }
@@ -278,12 +296,13 @@
     return '<header class="top">' +
       '<button class="sync sync-' + state.sync + '" data-act="sync" aria-label="État de la synchro"></button>' +
       '<span class="me">' + esc(s ? s.me : '') + (s && s.agent ? ' <span class="tag">agent</span>' : '') + '</span>' +
+      (MINI ? '<a class="icon" href="./" target="_blank" aria-label="Ouvrir en grand">⤢</a>' : '') +
       '<button class="icon" data-act="menu" aria-label="Menu">' + GEAR + '</button>' +
       '</header>';
   }
 
-  function section(title, body) {
-    return '<section class="block"><h2 class="block-title">' + esc(title) + '</h2>' + body + '</section>';
+  function section(title, body, extraClass) {
+    return '<section class="block' + (extraClass ? ' ' + extraClass : '') + '"><h2 class="block-title">' + esc(title) + '</h2>' + body + '</section>';
   }
 
   // La carte compteur : toujours là, avec les projets qui le lancent. Au repos, 0:00:00 en grisé dit
@@ -718,6 +737,11 @@
   // Hors ligne pour le web seulement : dans l'APK, les fichiers sont déjà sur le téléphone.
   if ('serviceWorker' in navigator && location.protocol === 'https:' && !window.KTAndroid) {
     navigator.serviceWorker.register('sw.js');
+  }
+
+  // Mini-fenêtre verrouillée : la barre du haut ne sert plus de poignée pour la déplacer.
+  if (MINI && window.ktDesktop && window.ktDesktop.onLocked) {
+    window.ktDesktop.onLocked(function (locked) { document.documentElement.classList.toggle('locked', !!locked); });
   }
 
   if (state.code) native('setCode', state.code);

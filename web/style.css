@@ -260,3 +260,24 @@ dialog::backdrop { background: rgb(0 0 0 / .45); }
   transition: opacity .2s, transform .2s;
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* Version compacte (?mini=1) : la mini-fenêtre de bureau (dossier desktop/). Compteur, projets et
+   tâches seulement ; la barre du haut sert de poignée pour déplacer la fenêtre, sauf verrouillée. */
+html.mini #app { max-width: none; padding: 6px 10px 10px; gap: 8px; }
+html.mini .top { min-height: 30px; -webkit-app-region: drag; user-select: none; }
+html.mini .top button, html.mini .top a { -webkit-app-region: no-drag; }
+html.mini.locked .top { -webkit-app-region: no-drag; }
+html.mini .top .icon { width: 30px; height: 30px; text-decoration: none; font-size: 17px; }
+html.mini .top .icon svg { width: 18px; height: 18px; }
+html.mini .hero { padding: 10px 10px 8px; gap: 4px; }
+html.mini .hero-project { font-size: 14px; }
+html.mini .hero-time { font-size: 40px; }
+html.mini .stop { min-height: 40px; font-size: 16px; margin-top: 2px; }
+html.mini .hero .grid { gap: 6px; margin-top: 4px; }
+html.mini .proj { min-height: 42px; font-size: 15px; padding: 4px 8px; }
+html.mini .proj.play small { font-size: 11px; }
+html.mini .types { gap: 5px; }
+html.mini .type { min-height: 32px; font-size: 12px; border-radius: 9px; }
+html.mini .block-title { font-size: 11px; margin-top: 0; }
+html.mini .block { gap: 5px; }
+html.mini .note-text, html.mini .add, html.mini .today { display: none; }

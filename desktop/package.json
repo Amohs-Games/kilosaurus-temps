@@ -1,0 +1,12 @@
+{
+  "name": "kilosaurus-temps-desktop",
+  "private": true,
+  "description": "Mini-fenêtre de bureau de Kilosaurus Temps : compteur, projets et tâches, au-dessus de tout.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^44.5.1"
+  }
+}

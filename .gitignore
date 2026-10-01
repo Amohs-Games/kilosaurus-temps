@@ -16,3 +16,6 @@ android/keystore.properties
 android/local.properties
 
 *.apk
+
+# Mini-fenêtre de bureau : dépendances (Electron).
+desktop/node_modules/
