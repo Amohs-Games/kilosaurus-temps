@@ -11,11 +11,11 @@
 
   var L = window.KTLogic;
   var API = window.KT_API_URL;
-  var VERSION = '1.0.0';
+  var VERSION = '1.1.0';
   var TIMEOUT_MS = 25000; // Apps Script répond parfois en 30 s ; l'écran, lui, a déjà réagi.
   var RETRY_MS = 30000;
   var BUSY_RETRY_MS = 5000;
-  var KEYS = { code: 'kt.code', status: 'kt.status', queue: 'kt.queue' };
+  var KEYS = { code: 'kt.code', status: 'kt.status', queue: 'kt.queue', type: 'kt.type', studio: 'kt.showStudio' };
   // L'URL d'API doit avoir été renseignée dans config.js (le modèle contient « REMPLACER »).
   var CONFIGURED = typeof API === 'string' && /^(https?:\/\/|\/)/.test(API) && API.indexOf('REMPLACER') < 0;
 
@@ -40,10 +40,20 @@
     retryTimer: null,
     loginError: '',
     forgotOpen: false,
+    type: load(KEYS.type) || 'Autre',
+    showStudio: load(KEYS.studio) === '1',
+    recap: null,
   };
 
   function saveStatus() { save(KEYS.status, state.status ? JSON.stringify(state.status) : null); }
   function saveQueue() { save(KEYS.queue, JSON.stringify(state.queue)); }
+
+  // Type affiché : celui du compteur en cours, sinon le dernier choisi (utilisé au prochain lancement).
+  function currentType() {
+    var r = state.status && state.status.running;
+    return r ? L.typeOf(r) : state.type;
+  }
+  function setType(t) { state.type = t; save(KEYS.type, t); }
 
   // ---- Réseau ----
 
@@ -193,6 +203,7 @@
 
   function setStatus(data) {
     state.status = data;
+    if (data && data.running) setType(L.typeOf(data.running));
     saveStatus();
     render();
     native('onStatus', JSON.stringify(data));
@@ -238,7 +249,7 @@
         (state.sync === 'ok' ? 'Connexion…' : esc(state.syncMsg) + '<br>Nouvel essai dans un instant…') + '</p>';
       return;
     }
-    app.innerHTML = header(s) + hero(s) + grid(s) + studio(s) + blocks() + lastView(s);
+    app.innerHTML = header(s) + hero(s) + typeBar(s) + grid(s) + todayView(s) + blocks() + lastView(s);
     tick();
   }
 
@@ -270,21 +281,53 @@
   function hero(s) {
     var r = s.running;
     if (!r) return '<section class="hero idle">Rien en cours</section>';
-    return '<section class="hero' + (r.project === s.studio ? ' is-studio' : '') + '">' +
-      '<div class="hero-project">' + esc(r.project) + '</div>' +
+    var t = L.typeOf(r);
+    return '<section class="hero" style="--c:' + L.typeColor(s, t) + '">' +
+      '<div class="hero-project">' + esc(r.project) + ' · ' + esc(t) + '</div>' +
       '<div class="hero-time" id="elapsed">' + L.elapsed(Date.now() - new Date(r.start).getTime()) + '</div>' +
       '<button class="stop" data-act="stop">STOP</button>' +
       '<button class="link note-text" data-act="note">' + (r.note ? esc(r.note) : '+ note') + '</button>' +
       '</section>';
   }
 
-  function projectButton(s, p, extra) {
+  function typeBar(s) {
+    var cur = currentType();
+    return '<div class="types">' + L.typesOf(s).map(function (t) {
+      return '<button class="type' + (t.name === cur ? ' on' : '') + '" style="--c:' + t.color + '" data-act="type" data-t="' + esc(t.name) + '">' + esc(t.name) + '</button>';
+    }).join('') + '</div>';
+  }
+
+  function todayView(s) {
+    return '<section class="today">' +
+      '<div class="today-head"><span>Aujourd’hui</span><b id="today-total">' + L.duration(L.todayTotal(s.today, Date.now())) + '</b>' +
+      '<button class="link small" data-act="recap">Récap</button></div>' +
+      '<div class="timeline" id="timeline">' + timelineHtml(s) + '</div></section>';
+  }
+
+  function timelineHtml(s) {
+    var tl = L.dayTimeline(s.today, Date.now());
+    var span = Math.max(tl.to - tl.from, 60000);
+    var pct = function (ms) { return ((ms - tl.from) / span * 100).toFixed(2) + '%'; };
+    var html = tl.segments.map(function (g) {
+      return '<span class="seg" style="left:' + pct(g.start) + ';width:' + (((g.end - g.start) / span) * 100).toFixed(2) + '%;background:' + L.typeColor(s, g.type) + '"></span>';
+    }).join('');
+    var h = new Date(tl.from);
+    h.setMinutes(0, 0, 0);
+    h.setHours(h.getHours() + 1);
+    for (; h.getTime() < tl.to; h.setHours(h.getHours() + 1)) {
+      if (h.getHours() % 2) continue;
+      html += '<span class="tick" style="left:' + pct(h.getTime()) + '">' + h.getHours() + 'h</span>';
+    }
+    return html;
+  }
+
+  function projectButton(s, p) {
     var on = s.running && s.running.project === p;
-    return '<button class="proj' + (extra || '') + (on ? ' on' : '') + '" data-act="start" data-p="' + esc(p) + '">' + esc(p) + '</button>';
+    return '<button class="proj' + (on ? ' on' : '') + '" data-act="start" data-p="' + esc(p) + '">' + esc(p) + '</button>';
   }
 
   function grid(s) {
-    var vp = L.visibleProjects(s);
+    var vp = L.visibleProjects(s, state.showStudio);
     var html = vp.shown.map(function (p) { return projectButton(s, p); }).join('');
     if (vp.more.length) {
       var hidden = s.running && vp.more.indexOf(s.running.project) >= 0;
@@ -292,10 +335,6 @@
         (hidden ? esc(s.running.project) : 'Plus…') + '</button>';
     }
     return '<div class="grid">' + html + '</div>';
-  }
-
-  function studio(s) {
-    return s.projects.indexOf(s.studio) >= 0 ? projectButton(s, s.studio, ' studio') : '';
   }
 
   function blocks() {
@@ -328,6 +367,10 @@
     var el = document.getElementById('elapsed');
     var r = state.status && state.status.running;
     if (el && r) el.textContent = L.elapsed(Date.now() - new Date(r.start).getTime());
+    var total = document.getElementById('today-total');
+    if (total && state.status) total.textContent = L.duration(L.todayTotal(state.status.today, Date.now()));
+    var tl = document.getElementById('timeline');
+    if (tl && state.status && r && Date.now() % 30000 < 1000) tl.innerHTML = timelineHtml(state.status);
   }
 
   var toastTimer = null;
@@ -345,7 +388,7 @@
   document.body.appendChild(dlg);
   dlg.addEventListener('cancel', function (e) { if (dlg.dataset.locked) e.preventDefault(); });
   dlg.addEventListener('click', function (e) { if (e.target === dlg && !dlg.dataset.locked) closeDialog(); });
-  dlg.addEventListener('close', function () { state.forgotOpen = false; });
+  dlg.addEventListener('close', function () { state.forgotOpen = false; state.recap = null; });
 
   function openDialog(html, locked) {
     dlg.innerHTML = '<div class="dlg">' + html + '</div>';
@@ -361,7 +404,7 @@
 
   function projectList(projects, act, extraData) {
     return '<div class="list">' + projects.map(function (p) {
-      return '<button class="proj' + (p === state.status.studio ? ' studio' : '') + '" data-act="' + act + '" data-p="' + esc(p) + '"' +
+      return '<button class="proj" data-act="' + act + '" data-p="' + esc(p) + '"' +
         (extraData || '') + '>' + esc(p) + '</button>';
     }).join('') + '</div>';
   }
@@ -393,17 +436,26 @@
   var handlers = {
     close: closeDialog,
 
+    type: function (el) {
+      var t = el.dataset.t;
+      var r = state.status.running;
+      setType(t);
+      if (r && L.typeOf(r) !== t) act('start', { id: uid(), project: r.project, type: t });
+      else render();
+    },
+
     start: function (el) {
       var p = el.dataset.p;
       closeDialog();
-      if (state.status.running && state.status.running.project === p) return;
-      act('start', { id: uid(), project: p });
+      var r = state.status.running;
+      if (r && r.project === p) return;
+      act('start', { id: uid(), project: p, type: currentType() });
     },
 
     stop: function () { act('stop', {}); },
 
     more: function () {
-      openDialog('<h2>Autres projets</h2>' + projectList(L.visibleProjects(state.status).more, 'start') + cancelButton());
+      openDialog('<h2>Autres projets</h2>' + projectList(L.visibleProjects(state.status, state.showStudio).more, 'start') + cancelButton());
     },
 
     note: function () {
@@ -423,12 +475,12 @@
     block: function (el) {
       var h = Number(el.dataset.v);
       openDialog('<h2>' + h + ' h aujourd’hui sur…</h2>' +
-        projectList(state.status.projects, 'blockSave', ' data-h="' + h + '"') + cancelButton());
+        projectList(L.pickableProjects(state.status, state.showStudio), 'blockSave', ' data-h="' + h + '"') + cancelButton());
     },
 
     blockSave: function (el) {
       closeDialog();
-      act('logBlock', { id: uid(), project: el.dataset.p, hours: Number(el.dataset.h) });
+      act('logBlock', { id: uid(), project: el.dataset.p, hours: Number(el.dataset.h), type: currentType() });
     },
 
     otherDay: function () {
@@ -437,7 +489,7 @@
       yesterday.setDate(today.getDate() - 1);
       openDialog('<h2>Ajouter après coup</h2>' +
         '<input class="field" id="od-date" type="date" max="' + L.dayKey(today) + '" value="' + L.dayKey(yesterday) + '">' +
-        '<select class="field" id="od-project">' + state.status.projects.map(function (p) {
+        '<select class="field" id="od-project">' + L.pickableProjects(state.status, state.showStudio).map(function (p) {
           return '<option value="' + esc(p) + '">' + esc(p) + '</option>';
         }).join('') + '</select>' +
         '<div class="row blocks" id="od-hours">' + L.BLOCK_HOURS.map(function (h) {
@@ -462,6 +514,7 @@
         project: document.getElementById('od-project').value,
         hours: Number(picked.dataset.v),
         date: date,
+        type: currentType(),
       };
       var note = document.getElementById('od-note').value.trim();
       if (note) params.note = note;
@@ -511,6 +564,7 @@
     menu: function () {
       openDialog('<h2>Menu</h2>' +
         (state.status ? '<button class="menu-item" data-act="addProject">+ Nouveau projet</button>' : '') +
+        (state.status ? '<button class="menu-item" data-act="toggleStudio">Afficher Studio : ' + (state.showStudio ? 'oui' : 'non') + '</button>' : '') +
         '<button class="menu-item" data-act="changeCode">Changer de code</button>' +
         '<div class="version">Kilosaurus Temps ' + VERSION + '</div>' + cancelButton());
     },
@@ -549,7 +603,106 @@
       closeDialog();
       refresh();
     },
+
+    toggleStudio: function () {
+      state.showStudio = !state.showStudio;
+      save(KEYS.studio, state.showStudio ? '1' : null);
+      closeDialog();
+      render();
+    },
+
+    recap: function () {
+      state.recap = { mode: 'week', ref: new Date(), data: null, error: '' };
+      loadRecap();
+    },
+    recapMode: function (el) {
+      state.recap.mode = el.dataset.m;
+      state.recap.ref = new Date();
+      loadRecap();
+    },
+    recapPrev: function () { shiftRecap(-1); },
+    recapNext: function () { shiftRecap(1); },
   };
+
+  // ---- Récap (lecture seule : ne passe pas par la file d'actions) ----
+
+  function recapRange() {
+    return state.recap.mode === 'week' ? L.weekRange(state.recap.ref) : L.monthRange(state.recap.ref);
+  }
+
+  function shiftRecap(n) {
+    var d = new Date(state.recap.ref);
+    if (state.recap.mode === 'week') d.setDate(d.getDate() + 7 * n);
+    else d.setMonth(d.getMonth() + n, 1);
+    state.recap.ref = d;
+    loadRecap();
+  }
+
+  function loadRecap() {
+    var range = recapRange();
+    var asked = state.recap;
+    asked.data = null;
+    asked.error = '';
+    renderRecap();
+    post({ code: state.code, action: 'history', from: range.from, to: range.to }).then(function (res) {
+      if (state.recap !== asked) return;
+      if (res.ok) asked.data = res.data;
+      else asked.error = res.error.message;
+      renderRecap();
+    }).catch(function (err) {
+      rethrowIfBug(err);
+      if (state.recap !== asked) return;
+      asked.error = 'Récap indisponible : ' + failureMessage(err);
+      renderRecap();
+    });
+  }
+
+  function hoursLabel(h) { return L.duration(Math.round(h * 60) / 60); }
+
+  function renderRecap() {
+    var rc = state.recap;
+    var s = state.status;
+    var range = recapRange();
+    var title = rc.mode === 'week'
+      ? 'Semaine du ' + L.dayLabel(range.from, 0)
+      : new Date(range.from + 'T12:00:00').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    var body;
+    if (rc.error) body = '<p class="error">' + esc(rc.error) + '</p>';
+    else if (!rc.data) body = '<p class="muted">Chargement…</p>';
+    else {
+      var g = L.aggregate(rc.data.rows, range.days, Date.now());
+      body = '<p class="recap-total">Total : <b>' + hoursLabel(g.total) + '</b></p>' +
+        (rc.mode === 'week' ? weekBars(s, g, range) : '') +
+        breakdown('Par type', L.typesOf(s).map(function (t) { return [t.name, g.byType[t.name] || 0, t.color]; }), g.total) +
+        (rc.mode === 'month' ? breakdown('Par projet', Object.keys(g.byProject).map(function (p) { return [p, g.byProject[p], null]; }), g.total) : '');
+    }
+    openDialog('<div class="recap">' +
+      '<div class="tabs"><button class="chip' + (rc.mode === 'week' ? ' on' : '') + '" data-act="recapMode" data-m="week">Semaine</button>' +
+      '<button class="chip' + (rc.mode === 'month' ? ' on' : '') + '" data-act="recapMode" data-m="month">Mois</button></div>' +
+      '<div class="recap-nav"><button class="icon" data-act="recapPrev" aria-label="Précédent">‹</button><h2>' + esc(title) + '</h2>' +
+      '<button class="icon" data-act="recapNext" aria-label="Suivant">›</button></div>' +
+      body + '</div>' + '<button class="secondary" data-act="close">Fermer</button>');
+  }
+
+  function weekBars(s, g, range) {
+    var max = Math.max(8, Math.max.apply(null, range.days.map(function (k) { return g.byDay[k].total; })));
+    return '<div class="bars">' + range.days.map(function (k) {
+      var day = g.byDay[k];
+      var stack = L.typesOf(s).map(function (t) {
+        var h = day.byType[t.name] || 0;
+        return h ? '<span style="height:' + (h / max * 100).toFixed(1) + '%;background:' + t.color + '"></span>' : '';
+      }).join('');
+      var label = new Date(k + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'narrow' });
+      return '<div class="bar"><div class="stack">' + stack + '</div><small>' + (day.total ? hoursLabel(day.total) : '–') + '</small><small class="muted">' + label + '</small></div>';
+    }).join('') + '</div>';
+  }
+
+  function breakdown(title, items, total) {
+    return '<h3>' + esc(title) + '</h3><div class="breakdown">' + items.filter(function (i) { return i[1] > 0; }).map(function (i) {
+      return '<div class="line"><span class="dot"' + (i[2] ? ' style="background:' + i[2] + '"' : '') + '></span><span>' + esc(i[0]) + '</span>' +
+        '<b>' + hoursLabel(i[1]) + '</b><span class="muted">' + Math.round(i[1] / (total || 1) * 100) + ' %</span></div>';
+    }).join('') + '</div>';
+  }
 
   function editTime(field) {
     var last = state.status.last;

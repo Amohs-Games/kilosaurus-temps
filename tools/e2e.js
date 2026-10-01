@@ -114,17 +114,42 @@ async function main() {
 
   console.log('Lancement, bascule, stop');
   await page.click('[data-act="start"][data-p="Fluffy"]');
-  check(await page.evaluate('document.querySelector(".hero-project").textContent') === 'Fluffy', 'le compteur s’affiche tout de suite');
+  check(await page.evaluate('document.querySelector(".hero-project").textContent.split(" · ")[0]') === 'Fluffy', 'le compteur s’affiche tout de suite');
   await page.waitFor('document.querySelector(".sync-ok")', 'synchro');
   check((await api(P, { ...me, action: 'status' })).running?.project === 'Fluffy', 'serveur : Fluffy en cours');
   await page.click('[data-act="start"][data-p="Jam"]');
-  await page.waitFor('document.querySelector(".sync-ok") && document.querySelector(".hero-project").textContent === "Jam"', 'bascule');
+  await page.waitFor('document.querySelector(".sync-ok") && document.querySelector(".hero-project").textContent.startsWith("Jam · ")', 'bascule');
   let s = await api(P, { ...me, action: 'status' });
   check(s.running?.project === 'Jam' && s.last?.project === 'Fluffy', 'serveur : bascule Fluffy → Jam');
   await page.shot('02-compteur');
   await page.click('[data-act="stop"]');
   await page.waitFor('document.querySelector(".hero.idle") && document.querySelector(".sync-ok")', 'arrêt');
   check((await api(P, { ...me, action: 'status' })).running === null, 'serveur : plus de compteur');
+
+  console.log('Types, total du jour, récap');
+  await page.click('[data-act="type"][data-t="Dev"]');
+  await page.click('[data-act="start"][data-p="Fluffy"]');
+  await page.waitFor('document.querySelector(".sync-ok") && /Dev/.test(document.querySelector(".hero-project").textContent)', 'lancement en Dev');
+  await page.click('[data-act="type"][data-t="Art"]');
+  await page.waitFor('document.querySelector(".sync-ok") && /Art/.test(document.querySelector(".hero-project").textContent)', 'bascule en Art');
+  s = await api(P, { ...me, action: 'status' });
+  check(s.running?.type === 'Art' && s.last?.type === 'Dev' && s.last?.project === 'Fluffy', 'serveur : bascule de type Dev → Art sur Fluffy');
+  check(await page.evaluate('document.querySelectorAll("#timeline .seg").length') >= 1, 'la frise montre la journée');
+  await page.click('[data-act="recap"]');
+  await page.waitFor('document.querySelector("dialog .recap .bars")', 'récap semaine');
+  await page.shot('02b-recap');
+  await page.click('dialog [data-act="recapMode"][data-m="month"]');
+  await page.waitFor('document.querySelector("dialog .recap .breakdown")', 'récap mois');
+  await page.click('dialog [data-act="close"]');
+  await page.click('[data-act="menu"]');
+  await page.click('dialog [data-act="toggleStudio"]');
+  await page.waitFor('document.querySelector("[data-act=start][data-p=Studio]")', 'Studio affiché par le réglage');
+  // Réglage remis : avec Studio affiché, Proto et Jam passeraient dans « Plus… » pour la suite du test.
+  await page.click('[data-act="menu"]');
+  await page.click('dialog [data-act="toggleStudio"]');
+  await page.waitFor('!document.querySelector("[data-act=start][data-p=Studio]")', 'Studio masqué à nouveau');
+  await page.click('[data-act="stop"]');
+  await page.waitFor('document.querySelector(".hero.idle") && document.querySelector(".sync-ok")', 'arrêt');
 
   console.log('Note');
   await page.click('[data-act="start"][data-p="Proto"]');
@@ -141,10 +166,10 @@ async function main() {
   await page.click('[data-act="block"][data-v="8"]');
   await page.waitFor('document.querySelector("dialog[open] [data-act=blockSave]")', 'choix du projet');
   await page.shot('03-bloc');
-  await page.click('dialog [data-act="blockSave"][data-p="Studio"]');
+  await page.click('dialog [data-act="blockSave"][data-p="Proto"]');
   await page.waitFor('document.querySelector(".sync-ok") && document.querySelector("[data-act=editHours]")', 'bloc');
   s = await api(P, { ...me, action: 'status' });
-  check(s.last?.project === 'Studio' && s.last?.hours === 8 && !s.last?.start, 'serveur : bloc de 8 h sur Studio');
+  check(s.last?.project === 'Proto' && s.last?.hours === 8 && !s.last?.start, 'serveur : bloc de 8 h sur Proto');
   await page.click('[data-act="editHours"]');
   await page.click('dialog [data-act="editHoursSave"][data-v="6"]');
   await page.waitFor('document.querySelector(".sync-ok") && document.querySelector(".tag")', 'correction');
@@ -166,7 +191,7 @@ async function main() {
   console.log('Hors ligne');
   await page.send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
   await page.click('[data-act="start"][data-p="Heirfall"]');
-  check(await page.evaluate('document.querySelector(".hero-project").textContent') === 'Heirfall', 'hors ligne : le compteur s’affiche quand même');
+  check(await page.evaluate('document.querySelector(".hero-project").textContent.split(" · ")[0]') === 'Heirfall', 'hors ligne : le compteur s’affiche quand même');
   await page.waitFor('document.querySelector(".sync-pending")', 'indicateur en attente');
   check(JSON.parse(await page.evaluate('localStorage.getItem("kt.queue")')).length === 1, 'hors ligne : action gardée en file');
   check((await api(P, { ...me, action: 'status' })).running === null, 'serveur : rien reçu pendant la coupure');
@@ -190,7 +215,7 @@ async function main() {
   check((await api(P, { ...me, action: 'status' })).projects.includes('Game Jam 26'), 'serveur : onglet créé');
   await page.click('[data-act="more"]');
   await page.click('dialog [data-act="start"][data-p="Game Jam 26"]');
-  await page.waitFor('document.querySelector(".sync-ok") && document.querySelector(".hero-project").textContent === "Game Jam 26"', 'lancement depuis « Plus… »');
+  await page.waitFor('document.querySelector(".sync-ok") && document.querySelector(".hero-project").textContent.startsWith("Game Jam 26 · ")', 'lancement depuis « Plus… »');
   await page.shot('06-plus');
 
   console.log('Refus du serveur');
