@@ -246,6 +246,31 @@ Utilisation :
   appareil, il apparaît à la prochaine mise à jour (30 min au plus, limite d'Android) ou au
   prochain tap.
 
+## La mini-fenêtre de bureau (Windows)
+
+Une petite fenêtre sans bordure, dans un coin de l'écran, au-dessus de tout : le compteur, les
+projets et les tâches (la version compacte du site, `?mini=1`). Elle se lance au démarrage de
+Windows et s'ajuste à la hauteur de son contenu.
+
+```bash
+cd desktop && npm install && npm start
+```
+
+Le premier lancement l'inscrit au démarrage de Windows ; il faut ensuite saisir son code une fois
+(le code `PC`). Si `npm install` n'a pas téléchargé Electron (`node_modules/electron/dist` vide),
+lancez `node node_modules/electron/install.js`. Le démarrage automatique pointe vers ce dossier :
+si le dépôt est déplacé, relancez `npm start` depuis le nouvel emplacement.
+
+- **Déplacer** : glisser la barre du haut. **⤢** ouvre le site en grand dans le navigateur.
+- **Icône près de l'horloge** (clic droit) : afficher / masquer, **Verrouiller la position**,
+  **Toujours au-dessus**, **Lancer au démarrage**, remettre dans le coin, ouvrir en grand,
+  recharger, quitter. Un clic gauche affiche ou masque la fenêtre.
+- **Ctrl + Alt + K** affiche ou masque la fenêtre depuis n'importe où.
+- Les réglages (position, verrou…) sont gardés dans `%APPDATA%\kilosaurus-temps-desktop\window.json`.
+- Lancée depuis un terminal de VS Code, la fenêtre ne s'ouvre pas : VS Code pose
+  `ELECTRON_RUN_AS_NODE`, qui fait tourner Electron comme Node. Lancez-la depuis un autre terminal,
+  ou retirez d'abord cette variable.
+
 ## Ajouter un projet
 
 Depuis l'app : **menu → + Nouveau projet**. Ou dans la Sheet : dupliquez `_Modèle` et renommez la
