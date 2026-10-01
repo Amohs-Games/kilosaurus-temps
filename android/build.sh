@@ -70,3 +70,15 @@ PASS="$(sed -n 's/^password=//p' "$PROPS")"
   --ks-pass "pass:$PASS" --key-pass "pass:$PASS" --out "$OUT/kilosaurus-temps.apk" "$OUT/aligned.apk"
 "$JDK/bin/java" -jar "$TOOLS/lib/apksigner.jar" verify "$OUT/kilosaurus-temps.apk"
 echo "APK : $OUT/kilosaurus-temps.apk"
+
+# Dépôt automatique, facultatif : si android/local.properties (jamais commité) contient
+# apk_drop=<dossier>, l'APK y est copié à chaque build, en remplaçant le précédent. Un dossier
+# Google Drive synchronisé permet ainsi d'installer la dernière version depuis le téléphone.
+LOCAL="$HERE/local.properties"
+DROP=""
+[ -f "$LOCAL" ] && DROP="$(sed -n 's/^apk_drop=//p' "$LOCAL" | tr -d '\r')"
+if [ -n "$DROP" ]; then
+  mkdir -p "$DROP"
+  cp "$OUT/kilosaurus-temps.apk" "$DROP/kilosaurus-temps.apk"
+  echo "Copié dans : $DROP"
+fi

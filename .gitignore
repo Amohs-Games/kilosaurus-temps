@@ -12,5 +12,7 @@ __pycache__/
 android/build/
 android/release.keystore
 android/keystore.properties
+# Réglages propres à la machine (dossier de dépôt de l'APK).
+android/local.properties
 
 *.apk

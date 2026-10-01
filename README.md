@@ -207,6 +207,11 @@ Au premier build, une clé de signature est créée (`android/release.keystore` 
 commités. Pour une mise à jour, augmentez le numéro de version :
 `VERSION_CODE=2 VERSION_NAME=1.1 bash android/build.sh`.
 
+**Dépôt automatique** (facultatif) : créez `android/local.properties` avec une ligne
+`apk_drop=G:/Mon Drive/KILOSAURUS/Temps` (un dossier Google Drive synchronisé, par exemple). Chaque
+build y copie l'APK en remplaçant le précédent : la dernière version s'installe ensuite depuis
+l'app Drive du téléphone. Ce fichier est propre à la machine et n'est jamais commité.
+
 L'adresse de l'API est celle de `web/config.js` (pour l'app) et de `Api.DEFAULT_URL` dans
 `android/src/…/Api.java` (pour le widget, modifiable dans son réglage).
 
