@@ -17,15 +17,21 @@ var Core = (function () {
   var FORBIDDEN_NAME = /[\[\]*?\/\\:]/;
   var DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
   var WRITE_ACTIONS = ['start', 'stop', 'note', 'logBlock', 'logSession', 'editLast', 'addProject'];
-  // Types de travail, dans l'ordre d'affichage. Une ligne sans type (historique) vaut Autre.
+  // Types de travail, dans l'ordre d'affichage. Une ligne sans type (historique) vaut Misc.
   var TYPES = [
-    { name: 'Autre', color: '#9B20F9' },
-    { name: 'Dev', color: '#3B82F6' },
+    { name: 'Misc', color: '#9B20F9' },
     { name: 'Art', color: '#EC4899' },
-    { name: 'Narration', color: '#22C55E' },
+    { name: 'Dev', color: '#3B82F6' },
+    { name: 'Writing', color: '#22C55E' },
   ];
   var TYPE_NAMES = TYPES.map(function (t) { return t.name; });
-  var DEFAULT_TYPE = 'Autre';
+  var DEFAULT_TYPE = 'Misc';
+  // Noms de la première version : encore présents dans la Sheet et chez les clients pas à jour.
+  var LEGACY_TYPES = { Autre: 'Misc', Narration: 'Writing' };
+
+  function canonicalType(name) {
+    return LEGACY_TYPES.hasOwnProperty(name) ? LEGACY_TYPES[name] : name;
+  }
 
   // Pas d'instanceof : une Date venue d'un autre contexte JS (tests Node) doit aussi être reconnue.
   function isDate(v) {
@@ -58,7 +64,8 @@ var Core = (function () {
   }
 
   function typeOf(row) {
-    return TYPE_NAMES.indexOf(row.type) >= 0 ? row.type : DEFAULT_TYPE;
+    var name = canonicalType(row.type);
+    return TYPE_NAMES.indexOf(name) >= 0 ? name : DEFAULT_TYPE;
   }
 
   function myLast(ctx) {
@@ -171,8 +178,9 @@ var Core = (function () {
 
   function requireType(value, fallback) {
     if (value === undefined || value === null || value === '') return fallback;
-    if (TYPE_NAMES.indexOf(value) < 0) fail('Type inconnu : ' + value + '. Types : ' + TYPE_NAMES.join(', ') + '.');
-    return value;
+    var name = canonicalType(value);
+    if (TYPE_NAMES.indexOf(name) < 0) fail('Type inconnu : ' + value + '. Types : ' + TYPE_NAMES.join(', ') + '.');
+    return name;
   }
 
   // Heure à laquelle l'action a eu lieu : celle du serveur, sauf pour une action rejouée hors ligne.

@@ -16,7 +16,7 @@ import org.json.JSONObject;
 import java.util.UUID;
 
 /**
- * Widget à quatre boutons de type (Autre, Dev, Art, Narration). Un tap envoie une seule requête :
+ * Widget à quatre boutons de type (Misc, Art, Dev, Writing). Un tap envoie une seule requête :
  * lancer, basculer de type, ou mettre en pause. Le chrono affiché est géré par Android
  * (Chronometer), sans réveiller l'app chaque seconde.
  */
@@ -26,10 +26,10 @@ public class WidgetProvider extends AppWidgetProvider {
     static final String EXTRA_TYPE = "type";
 
     // Même ordre et mêmes couleurs que la liste du serveur (Core.gs).
-    static final String[] TYPES = { "Autre", "Dev", "Art", "Narration" };
-    static final int[] BUTTONS = { R.id.type_autre, R.id.type_dev, R.id.type_art, R.id.type_narration };
-    static final int[] ON = { R.drawable.type_autre_on, R.drawable.type_dev_on, R.drawable.type_art_on, R.drawable.type_narration_on };
-    static final int[] OFF = { R.drawable.type_autre_off, R.drawable.type_dev_off, R.drawable.type_art_off, R.drawable.type_narration_off };
+    static final String[] TYPES = { "Misc", "Art", "Dev", "Writing" };
+    static final int[] BUTTONS = { R.id.type_misc, R.id.type_art, R.id.type_dev, R.id.type_writing };
+    static final int[] ON = { R.drawable.type_misc_on, R.drawable.type_art_on, R.drawable.type_dev_on, R.drawable.type_writing_on };
+    static final int[] OFF = { R.drawable.type_misc_off, R.drawable.type_art_off, R.drawable.type_dev_off, R.drawable.type_writing_off };
 
     @Override
     public void onReceive(Context ctx, Intent intent) {
@@ -76,20 +76,26 @@ public class WidgetProvider extends AppWidgetProvider {
             renderAll(ctx);
             return;
         }
-        p.setMessage("Envoi…");
+        boolean pause = running && type.equals(p.runningType());
+        // Réaction immédiate : l'état attendu s'affiche avant la réponse du serveur (1 à 30 s), qui le
+        // remplace ensuite. En cas d'échec, l'état d'avant revient.
+        Prefs.Running before = p.running();
+        p.setRunning(pause ? null : new Prefs.Running(project, type, System.currentTimeMillis()));
+        p.setMessage("");
         renderAll(ctx);
         try {
             JSONObject body = new JSONObject().put("code", p.code());
-            if (running && type.equals(p.runningType())) {
+            if (pause) {
                 body.put("action", "stop");
             } else {
                 body.put("action", "start").put("id", UUID.randomUUID().toString()).put("project", project).put("type", type);
             }
             p.saveStatus(Api.call(p.url(), body));
-            p.setMessage("");
         } catch (Api.ApiException e) {
+            p.setRunning(before);
             p.setMessage(describe(e));
         } catch (JSONException e) {
+            p.setRunning(before);
             p.setMessage("Erreur interne : " + e.getMessage());
         }
         renderAll(ctx);

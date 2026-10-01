@@ -49,7 +49,33 @@ final class Prefs {
     boolean isRunning() { return sp.getLong("runningStart", 0) > 0; }
     String runningProject() { return sp.getString("runningProject", ""); }
     long runningStart() { return sp.getLong("runningStart", 0); }
-    String runningType() { return sp.getString("runningType", "Autre"); }
+    String runningType() { return canonicalType(sp.getString("runningType", "Misc")); }
+
+    /** Noms de la première version (Autre, Narration), encore possibles dans un état mémorisé. */
+    static String canonicalType(String type) {
+        if ("Autre".equals(type)) return "Misc";
+        if ("Narration".equals(type)) return "Writing";
+        return type;
+    }
+
+    /** État « compteur en cours » tel qu'il est mémorisé, pour le remettre si une requête échoue. */
+    static final class Running {
+        final String project, type;
+        final long start;
+        Running(String project, String type, long start) { this.project = project; this.type = type; this.start = start; }
+    }
+
+    Running running() {
+        return new Running(sp.getString("runningProject", ""), sp.getString("runningType", "Misc"), sp.getLong("runningStart", 0));
+    }
+
+    /** Pose l'état affiché avant la réponse du serveur (null = rien en cours), ou remet un état mémorisé. */
+    void setRunning(Running r) {
+        SharedPreferences.Editor e = sp.edit();
+        if (r == null || r.start <= 0) e.remove("runningProject").remove("runningType").remove("runningStart");
+        else e.putString("runningProject", r.project).putString("runningType", r.type).putLong("runningStart", r.start);
+        e.apply();
+    }
 
     /** Mémorise l'état renvoyé par l'API (champ running de status). */
     void saveStatus(JSONObject data) {
@@ -57,7 +83,7 @@ final class Prefs {
         JSONObject running = data.optJSONObject("running");
         if (running != null) {
             e.putString("runningProject", running.optString("project", ""));
-            e.putString("runningType", running.optString("type", "Autre"));
+            e.putString("runningType", running.optString("type", "Misc"));
             e.putLong("runningStart", Instant.parse(running.optString("start")).toEpochMilli());
         } else {
             e.remove("runningProject").remove("runningType").remove("runningStart");

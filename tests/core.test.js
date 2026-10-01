@@ -391,11 +391,11 @@ test('erreur interne → server, sans faire planter l\'appelant', () => {
   fails(call('code-amohs', 'status'), 'server');
 });
 
-test('type : Autre par défaut, enregistré sur la ligne', () => {
+test('type : Misc par défaut, enregistré sur la ligne', () => {
   const { call, store } = makeEnv();
   const s = ok(call('code-amohs', 'start', { id: 't1', project: 'Fluffy' }));
-  assert.equal(s.running.type, 'Autre');
-  assert.equal(rows(store, 'Fluffy')[0].type, 'Autre');
+  assert.equal(s.running.type, 'Misc');
+  assert.equal(rows(store, 'Fluffy')[0].type, 'Misc');
 });
 
 test('type : bascule de type sur le même projet, sans trou', () => {
@@ -432,21 +432,21 @@ test('type : start sans type garde le type du compteur en cours', () => {
 test('type : inconnu → invalid ; blocs et sessions d\'agent typés', () => {
   const { call, store } = makeEnv();
   fails(call('code-amohs', 'start', { id: 't1', project: 'Fluffy', type: 'Musique' }), 'invalid');
-  ok(call('code-amohs', 'logBlock', { id: 'b1', project: 'Fluffy', hours: 2, type: 'Narration' }));
-  assert.equal(rows(store, 'Fluffy')[0].type, 'Narration');
+  ok(call('code-amohs', 'logBlock', { id: 'b1', project: 'Fluffy', hours: 2, type: 'Writing' }));
+  assert.equal(rows(store, 'Fluffy')[0].type, 'Writing');
   ok(call('code-alex-claude', 'logSession', {
     id: 's1', project: 'Fluffy', start: '2026-10-01T06:00:00+02:00', end: '2026-10-01T07:00:00+02:00',
   }));
-  assert.equal(rows(store, 'Fluffy')[1].type, 'Autre');
+  assert.equal(rows(store, 'Fluffy')[1].type, 'Misc');
 });
 
-test('type : une ligne sans type (historique) vaut Autre', () => {
+test('type : une ligne sans type (historique) vaut Misc', () => {
   const { call, store } = makeEnv();
   store.insert('Fluffy', {
     id: 'old', person: 'Amohs', date: new Date('2026-09-30T00:00:00+02:00'), start: '', end: '', hours: 4,
     note: '', source: 'app', created: new Date('2026-09-30T10:00:00+02:00'), corrected: '', touched: new Date('2026-09-30T10:00:00+02:00'),
   });
-  assert.equal(ok(call('code-amohs', 'status')).last.type, 'Autre');
+  assert.equal(ok(call('code-amohs', 'status')).last.type, 'Misc');
 });
 
 test('status.types et status.today', () => {
@@ -455,7 +455,7 @@ test('status.types et status.today', () => {
   ok(call('code-amohs', 'start', { id: 'a', project: 'Fluffy', type: 'Dev' }));
   clock.advance(60);
   const s = ok(call('code-amohs', 'start', { id: 'b', project: 'Fluffy', type: 'Art' }));
-  assert.deepEqual(Array.from(s.types, (t) => t.name), ['Autre', 'Dev', 'Art', 'Narration']);
+  assert.deepEqual(Array.from(s.types, (t) => t.name), ['Misc', 'Art', 'Dev', 'Writing']);
   assert.deepEqual(s.today.map((r) => r.id), ['a', 'b']);
   assert.equal(s.today[1].end, null);
 });
@@ -486,4 +486,23 @@ test('history : dates invalides ou plus de 62 jours → invalid', () => {
   fails(call('code-amohs', 'history', { from: '2026-01-01', to: '2026-03-15' }), 'invalid');
   fails(call('code-amohs', 'history', { from: 'hier', to: '2026-10-01' }), 'invalid');
   ok(call('code-amohs', 'history', { from: '2026-08-01', to: '2026-10-01' }));
+});
+
+test('type : anciens noms (Autre, Narration) lus et acceptés comme Misc, Writing', () => {
+  const { call, store, clock } = makeEnv();
+  const old = (id, type) => ({
+    id, person: 'Amohs', date: new Date('2026-10-01T00:00:00+02:00'), start: new Date('2026-10-01T07:00:00+02:00'),
+    end: new Date('2026-10-01T08:00:00+02:00'), hours: 1, note: '', type, source: 'app',
+    created: new Date('2026-10-01T08:00:00+02:00'), corrected: '', touched: new Date('2026-10-01T08:00:00+02:00'),
+  });
+  store.insert('Fluffy', old('o1', 'Autre'));
+  store.insert('Fluffy', old('o2', 'Narration'));
+  const h = ok(call('code-amohs', 'history', { from: '2026-10-01', to: '2026-10-01' }));
+  assert.deepEqual(h.rows.map((r) => r.type), ['Misc', 'Writing']);
+  const s = ok(call('code-amohs', 'start', { id: 'n1', project: 'Fluffy', type: 'Narration' }));
+  assert.equal(s.running.type, 'Writing');
+  assert.equal(rows(store, 'Fluffy')[2].type, 'Writing');
+  clock.advance(5);
+  const s2 = ok(call('code-amohs', 'start', { id: 'n2', project: 'Fluffy', type: 'Writing' }));
+  assert.equal(s2.running.id, 'n1', 'Narration puis Writing : même type, rien ne change');
 });

@@ -8,19 +8,22 @@
   var BLOCK_HOURS = [2, 4, 6, 8, 10, 12];
   // Copie de la liste du serveur (Core.gs), pour un état mis en cache par une version sans types.
   var DEFAULT_TYPES = [
-    { name: 'Autre', color: '#9B20F9' },
-    { name: 'Dev', color: '#3B82F6' },
+    { name: 'Misc', color: '#9B20F9' },
     { name: 'Art', color: '#EC4899' },
-    { name: 'Narration', color: '#22C55E' },
+    { name: 'Dev', color: '#3B82F6' },
+    { name: 'Writing', color: '#22C55E' },
   ];
-  var DEFAULT_TYPE = 'Autre';
+  var DEFAULT_TYPE = 'Misc';
+  // Noms de la première version, encore possibles dans un état ou un réglage mis en cache.
+  var LEGACY_TYPES = { Autre: 'Misc', Narration: 'Writing' };
   var HOUR = 3600000;
   var DAY_START_HOUR = 8;
 
   function pad(n) { return (n < 10 ? '0' : '') + n; }
 
   function typesOf(s) { return (s && s.types && s.types.length) ? s.types : DEFAULT_TYPES; }
-  function typeOf(row) { return (row && row.type) || DEFAULT_TYPE; }
+  function canonicalType(name) { return LEGACY_TYPES.hasOwnProperty(name) ? LEGACY_TYPES[name] : name; }
+  function typeOf(row) { return canonicalType((row && row.type) || DEFAULT_TYPE); }
   function typeColor(s, name) {
     var t = typesOf(s).filter(function (x) { return x.name === name; })[0];
     return t ? t.color : DEFAULT_TYPES[0].color;
@@ -126,7 +129,7 @@
     var at = item.clientTime;
 
     if (item.action === 'start') {
-      var type = p.type || (s.running ? typeOf(s.running) : DEFAULT_TYPE);
+      var type = p.type ? canonicalType(p.type) : (s.running ? typeOf(s.running) : DEFAULT_TYPE);
       if (s.running && s.running.project === p.project && typeOf(s.running) === type) return s;
       var start = new Date(new Date(at).getTime() - (p.offsetMinutes || 0) * 60000);
       if (s.running) {
@@ -155,7 +158,7 @@
       if (s.running) s.running.note = p.text;
     } else if (item.action === 'logBlock') {
       s.last = {
-        id: p.id, project: p.project, type: p.type || DEFAULT_TYPE, date: p.date || dayKey(at), start: null, end: null,
+        id: p.id, project: p.project, type: canonicalType(p.type || DEFAULT_TYPE), date: p.date || dayKey(at), start: null, end: null,
         hours: p.hours, note: p.note || '', source: 'app', corrected: false,
       };
       if (s.last.date === dayKey(at)) upsertToday(s, s.last);

@@ -114,8 +114,8 @@ test('total du jour : la session d\'hier soir ne compte que pour aujourd\'hui', 
   const rows = [
     sess('n', 'Dev', '2026-09-30T23:00:00+02:00', '2026-10-01T01:00:00+02:00'),
     sess('m', 'Art', '2026-10-01T08:00:00+02:00', null),
-    { id: 'b', project: 'Fluffy', type: 'Autre', date: '2026-10-01', start: null, end: null, hours: 2 },
-    { id: 'old', project: 'Fluffy', type: 'Autre', date: '2026-09-30', start: null, end: null, hours: 4 },
+    { id: 'b', project: 'Fluffy', type: 'Misc', date: '2026-10-01', start: null, end: null, hours: 2 },
+    { id: 'old', project: 'Fluffy', type: 'Misc', date: '2026-09-30', start: null, end: null, hours: 4 },
   ];
   assert.equal(L.todayTotal(rows, now), 1 + 2 + 2);
 });
@@ -134,10 +134,10 @@ test('frise : de 8 h (ou plus tôt) à maintenant, segments découpés à minuit
 test('ancien état en cache (v1.0) : rien ne casse', () => {
   const old = base();
   assert.equal(L.todayTotal(old.today, Date.now()), 0);
-  assert.deepEqual(L.typesOf(old).map((t) => t.name), ['Autre', 'Dev', 'Art', 'Narration']);
-  assert.equal(L.typeOf({ project: 'Fluffy' }), 'Autre');
+  assert.deepEqual(L.typesOf(old).map((t) => t.name), ['Misc', 'Art', 'Dev', 'Writing']);
+  assert.equal(L.typeOf({ project: 'Fluffy' }), 'Misc');
   const s = L.applyLocal(old, { action: 'start', params: { id: 'a', project: 'Fluffy' }, clientTime: '2026-10-01T09:00:00+02:00' });
-  assert.equal(s.running.type, 'Autre');
+  assert.equal(s.running.type, 'Misc');
 });
 
 test('semaine : lundi → dimanche, 7 jours même au passage à l\'heure d\'hiver', () => {
@@ -156,15 +156,15 @@ test('agrégats : par jour, par type, par projet', () => {
   const rows = [
     sess('a', 'Dev', '2026-09-29T09:00:00+02:00', '2026-09-29T12:00:00+02:00', 'Fluffy'),
     sess('b', 'Art', '2026-09-30T09:00:00+02:00', '2026-09-30T10:00:00+02:00', 'Heirfall'),
-    { id: 'c', project: 'Heirfall', type: 'Autre', date: '2026-09-30', start: null, end: null, hours: 2 },
+    { id: 'c', project: 'Heirfall', type: 'Misc', date: '2026-09-30', start: null, end: null, hours: 2 },
     sess('d', 'Dev', '2026-10-01T11:00:00+02:00', null, 'Heirfall'),
   ];
   const g = L.aggregate(rows, ['2026-09-29', '2026-09-30', '2026-10-01'], now);
   assert.equal(g.total, 3 + 1 + 2 + 1);
-  assert.deepEqual(g.byType, { Dev: 4, Art: 1, Autre: 2 });
+  assert.deepEqual(g.byType, { Dev: 4, Art: 1, Misc: 2 });
   assert.deepEqual(g.byProject, { Fluffy: 3, Heirfall: 4 });
   assert.equal(g.byDay['2026-09-30'].total, 3);
-  assert.deepEqual(g.byDay['2026-09-30'].byType, { Art: 1, Autre: 2 });
+  assert.deepEqual(g.byDay['2026-09-30'].byType, { Art: 1, Misc: 2 });
 });
 
 test('récap : une réponse ne vaut que pour la période affichée', () => {
@@ -173,4 +173,12 @@ test('récap : une réponse ne vaut que pour la période affichée', () => {
   assert.equal(L.recapMatches(month, { from: month.from, to: month.to, rows: [] }), true);
   assert.equal(L.recapMatches(month, { from: week.from, to: week.to, rows: [] }), false);
   assert.equal(L.recapMatches(month, null), false);
+});
+
+test('anciens noms de type (état en cache) : Autre → Misc, Narration → Writing', () => {
+  assert.equal(L.typeOf({ type: 'Autre' }), 'Misc');
+  assert.equal(L.typeOf({ type: 'Narration' }), 'Writing');
+  assert.equal(L.typeOf({ type: 'Dev' }), 'Dev');
+  const g = L.aggregate([{ id: 'a', project: 'Fluffy', type: 'Narration', date: '2026-10-01', start: null, end: null, hours: 2 }], ['2026-10-01'], Date.now());
+  assert.deepEqual(g.byType, { Writing: 2 });
 });

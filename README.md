@@ -48,8 +48,8 @@ La Sheet contient :
 
 - **Les onglets de projet** (`Fluffy`, `Heirfall`, `Studio`…). Chaque onglet sans `_` au début est
   un projet. L'ordre des onglets donne l'ordre des boutons dans l'app. La colonne **L — Type**
-  (Autre, Dev, Art, Narration) est ajoutée par le script à la première écriture ; une cellule vide
-  vaut Autre.
+  (Misc, Art, Dev, Writing) est ajoutée par le script à la première écriture ; une cellule vide
+  vaut Misc (les anciens noms Autre et Narration se lisent Misc et Writing).
 - **`_Config`** : la liste des personnes, le seuil d'oubli (8 h), le nom de l'onglet studio, le
   nombre de boutons visibles.
 - **`_Corrections`** : la trace de chaque correction d'heure.
@@ -156,7 +156,7 @@ du temps continue d'arriver dans l'ancien fichier, que plus rien ne lit.
 
 ## Utilisation
 
-- **Type de travail** (Autre, Dev, Art, Narration) : la rangée de boutons colorés. Compteur en
+- **Type de travail** (Misc, Art, Dev, Writing) : la rangée de boutons colorés. Compteur en
   cours, un tap bascule le type sans trou : le temps d'avant reste sous l'ancien type. Compteur
   arrêté, un tap choisit le type du prochain lancement.
 - **Lancer** : un tap sur un projet, avec le type choisi. Si un autre compteur tourne, il se ferme
@@ -225,15 +225,15 @@ L'adresse de l'API est celle de `web/config.js` (pour l'app) et de `Api.DEFAULT_
 ### Poser le widget
 
 1. Appui long sur l'écran d'accueil → **Widgets** → **Kilosaurus Temps** → **Types de travail**
-   (4 × 2 cases). Après une mise à jour qui change sa taille, retirez l'ancien widget et reposez-le.
+   (4 × 1 case, redimensionnable). Après une mise à jour qui change sa taille, retirez l'ancien widget et reposez-le.
 2. Le réglage s'ouvre : code perso (déjà rempli si vous vous êtes connecté dans l'app), puis
    **Charger mes projets**, choix du projet, **Enregistrer**.
 
 Utilisation :
 
-- **Un tap sur un type** (Autre, Dev, Art, Narr.) : compteur arrêté, il lance le projet du widget
+- **Un tap sur un type** (Misc, Art, Dev, Writing) : compteur arrêté, il lance le projet du widget
   avec ce type ; un autre type tourne, il bascule le compteur en cours vers ce type (même projet) ;
-  ce type tourne déjà, il met en pause. Le type en cours est en couleur pleine.
+  ce type tourne déjà, il met en pause. Le type en cours est en couleur pleine ; le bouton touché s'allume tout de suite, sans attendre le serveur.
 - **Toucher le nom du projet** rouvre le réglage (changer de projet ou de code).
 - **Sans réseau**, rien n'est enregistré, et le widget le dit. Toucher le message relit l'état.
 - Un compteur lancé depuis l'app apparaît tout de suite sur le widget. Lancé depuis un autre

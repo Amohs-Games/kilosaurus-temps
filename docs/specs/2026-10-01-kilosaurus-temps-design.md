@@ -47,7 +47,7 @@ Colonnes, identiques dans tous les onglets de projet :
 | I | Saisi le | Horodatage serveur de la création de la ligne |
 | J | Corrigé | `oui` si la ligne a été corrigée, sinon vide |
 | K | Modifié le | Horodatage serveur de la dernière écriture sur la ligne (création, arrêt, correction) |
-| L | Type | Autre, Dev, Art ou Narration ; vide = Autre (voir la spec des types de travail) |
+| L | Type | Misc, Art, Dev ou Writing ; vide = Misc (voir la spec des types de travail) |
 
 Trois sortes de lignes :
 

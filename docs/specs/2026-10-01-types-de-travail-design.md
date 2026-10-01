@@ -6,7 +6,7 @@ l'emporte.
 ## Objectif
 
 Savoir, sans effort, à quoi passe le temps : sur quel projet (Fluffy, Heirfall) et à quel type de
-travail (Dev, Art, Narration, Autre). Changer de type en un tap pendant que le compteur tourne, voir
+travail (Misc, Art, Dev, Writing). Changer de type en un tap pendant que le compteur tourne, voir
 où en est la journée, et un récap simple de la semaine et du mois.
 
 Succès :
@@ -20,22 +20,27 @@ Succès :
 
 ### Les types
 
-Liste fixe, dans cet ordre : **Autre**, **Dev**, **Art**, **Narration**. Autre est le type par
+Liste fixe, dans cet ordre : **Misc**, **Art**, **Dev**, **Writing**. Misc est le type par
 défaut. Les types ne se modifient pas depuis l'app.
 
 | Type | Couleur |
 |---|---|
-| Autre | `#9B20F9` (violet du logo) |
-| Dev | `#3B82F6` (bleu) |
+| Misc | `#9B20F9` (violet du logo) |
 | Art | `#EC4899` (rose) |
-| Narration | `#22C55E` (vert) |
+| Dev | `#3B82F6` (bleu) |
+| Writing | `#22C55E` (vert) |
 
 Les mêmes couleurs servent aux boutons de l'app, au widget, à la frise et aux récaps.
 
+**Anciens noms.** La première version s'appelait Autre, Dev, Art, Narration. `Autre` se lit `Misc`
+et `Narration` se lit `Writing`, à la lecture des lignes comme à la réception d'une requête : la
+Sheet n'est pas réécrite, et un client pas encore mis à jour continue de fonctionner. Les nouvelles
+lignes sont écrites avec les nouveaux noms.
+
 ### La colonne Type
 
-Chaque onglet de projet gagne une colonne **L — Type**. Une cellule vide vaut **Autre** : tout
-l'historique (report compris) compte donc comme Autre, sans réécrire la Sheet. L'en-tête « Type »
+Chaque onglet de projet gagne une colonne **L — Type**. Une cellule vide vaut **Misc** : tout
+l'historique (report compris) compte donc comme Misc, sans réécrire la Sheet. L'en-tête « Type »
 est posé automatiquement par le script sur un onglet qui ne l'a pas encore (à la première écriture,
 et sur `_Modèle` avant chaque copie).
 
@@ -54,7 +59,7 @@ des reconstructions, pour aucun gain.
 
 `start { id, project, type?, offsetMinutes?, note? }`
 
-- `type` absent : le type du compteur en cours s'il y en a un, sinon Autre. Le widget de la v1,
+- `type` absent : le type du compteur en cours s'il y en a un, sinon Misc. Le widget de la v1,
   l'agent et tout ancien client restent donc valides.
 - `type` hors de la liste : refusé (`invalid`).
 - Même projet **et** même type que le compteur en cours : ne fait rien (relancer ce qui tourne
@@ -62,7 +67,7 @@ des reconstructions, pour aucun gain.
 - Changer de projet garde le type que le client envoie ; l'app envoie toujours le type
   sélectionné.
 
-`logBlock` et `logSession` acceptent aussi `type?` (défaut Autre). `editLast` ne corrige pas le
+`logBlock` et `logSession` acceptent aussi `type?` (défaut Misc). `editLast` ne corrige pas le
 type.
 
 ### `status` gagne `types` et `today`
@@ -89,7 +94,7 @@ du récap.
 ● Amohs                         ⚙
         HEIRFALL · Dev
           2:14:07      [ STOP ]
- [Autre] [Dev] [Art] [Narration]     type
+ [Misc] [Art] [Dev] [Writing]       type
  [  Fluffy  ]  [  Heirfall  ]        projets
  Aujourd'hui : 5 h 42
  ▕██▓▓▓░░██████▓▓▏                   frise du jour
@@ -148,11 +153,14 @@ l'indique.
   - compteur arrêté → `start` sur le projet du widget, avec ce type ;
   - compteur en cours d'un autre type → `start` sur le projet en cours, avec ce type (bascule) ;
   - compteur en cours de ce type → `stop` (pause).
-- Taille de départ : 4 × 2 cases.
+- **Réaction immédiate** : le tap change l'affichage tout de suite (bouton en couleur pleine et chrono
+  lancé, ou tout éteint pour une pause), avant la réponse du serveur. La réponse remplace cet état ;
+  en cas d'échec, le widget revient à l'état d'avant et affiche le message.
+- Taille de départ : 4 × 1 case (titre et chrono sur une ligne, boutons dessous), redimensionnable.
 
 ## 5. Agent Claude
 
-Le skill documente `type` sur `start`, `logSession` et `logBlock` (défaut Autre) et l'action
+Le skill documente `type` sur `start`, `logSession` et `logBlock` (défaut Misc) et l'action
 `history`.
 
 ## 6. Icônes

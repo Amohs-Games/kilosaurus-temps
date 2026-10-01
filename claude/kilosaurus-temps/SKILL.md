@@ -55,9 +55,9 @@ réunions…). Si le projet demandé n'existe pas, demande à l'utilisateur plut
 | `editLast` | `id`, `field` (`start`, `end` ou `hours`), `value` | Corrige le dernier log (et seulement lui). |
 | `history` | `from`, `to` (`aaaa-mm-jj`, 62 jours max) | Les lignes de l'utilisateur sur la période, pour faire un bilan. Ne modifie rien. |
 
-`type` : `Autre` (défaut), `Dev`, `Art` ou `Narration` (liste dans `data.types`). Choisis-le d'après
+`type` : `Misc` (défaut), `Art`, `Dev` ou `Writing` (liste dans `data.types`). Choisis-le d'après
 la demande (« j'ai codé » → Dev, « j'ai dessiné » → Art, « j'ai écrit les dialogues » →
-Narration) ; dans le doute, demande.
+Writing) ; dans le doute, demande.
 
 Règles :
 
