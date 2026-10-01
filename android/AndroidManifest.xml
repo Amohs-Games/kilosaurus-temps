@@ -33,7 +33,7 @@
         <receiver
             android:name=".WidgetProvider"
             android:exported="true"
-            android:label="Types de travail">
+            android:label="Lecture / stop">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>

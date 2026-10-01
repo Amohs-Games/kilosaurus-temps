@@ -145,18 +145,24 @@ l'indique.
 
 ## 4. Widget Android
 
-- Titre : le projet du compteur en cours, sinon celui choisi dans le réglage du widget. Chrono
-  comme aujourd'hui.
-- Quatre boutons, un par type, aux couleurs des types ; celui du compteur en cours est mis en
-  évidence.
-- Un tap sur un type :
-  - compteur arrêté → `start` sur le projet du widget, avec ce type ;
-  - compteur en cours d'un autre type → `start` sur le projet en cours, avec ce type (bascule) ;
-  - compteur en cours de ce type → `stop` (pause).
-- **Réaction immédiate** : le tap change l'affichage tout de suite (bouton en couleur pleine et chrono
-  lancé, ou tout éteint pour une pause), avant la réponse du serveur. La réponse remplace cet état ;
-  en cas d'échec, le widget revient à l'état d'avant et affiche le message.
-- Taille de départ : 4 × 1 case (titre et chrono sur une ligne, boutons dessous), redimensionnable.
+Le téléphone sert à un seul usage (écrire) : le widget est un simple lecture / stop, sans choix de
+type. Les types se choisissent dans l'app.
+
+- Titre : « projet · type » du compteur en cours, sinon « projet du widget · Writing ».
+- Deux compteurs : la session en cours (grand) et le total du jour (petit, « Aujourd'hui »), qui
+  avance avec la session. Le total du jour vient de `status.today` (sessions découpées à minuit,
+  plus les blocs du jour).
+- Un seul bouton :
+  - compteur arrêté → ▶ : `start` sur le projet choisi dans le réglage du widget, type **Writing** ;
+  - compteur en cours (quel que soit son projet ou son type, lancé ici ou ailleurs) → ■ : `stop`.
+- **Zéro attente** : l'état affiché est celui du téléphone. Un tap le change aussitôt, sans réseau,
+  et chaque tap compte, même pendant un envoi. Les actions partent derrière, dans une file, une par
+  une et dans l'ordre, avec `tapTime` (l'heure du tap, que le serveur retient : la Sheet suit ce que
+  le widget a montré). Sans réseau, la file attend et repart toute seule (nouvel essai toutes les
+  minutes, à chaque tap et à chaque rafraîchissement). Tant que la file n'est pas vide, l'état du
+  serveur ne remplace pas celui du widget ; une fois vide, l'état du serveur fait foi. Une action
+  refusée par le serveur est retirée de la file et le widget se recale sur le serveur.
+- Taille de départ : 3 × 1 case, redimensionnable.
 
 ## 5. Agent Claude
 

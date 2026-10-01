@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="widget_description">Lance, bascule ou met en pause ton compteur, par type de travail.</string>
+    <string name="widget_description">Lance ou arrête ton compteur d’écriture, avec le total du jour.</string>
 </resources>

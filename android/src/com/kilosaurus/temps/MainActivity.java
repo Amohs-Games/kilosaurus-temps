@@ -1,6 +1,7 @@
 package com.kilosaurus.temps;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
@@ -72,6 +73,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        // Les taps du widget encore en file partent maintenant (le réseau est sans doute là).
+        sendBroadcast(new Intent(this, WidgetProvider.class).setAction(WidgetProvider.ACTION_REFRESH));
         // L'état a pu changer via le widget : la page se recharge depuis le serveur.
         web.evaluateJavascript("window.dispatchEvent(new Event('online'))", null);
     }

@@ -506,3 +506,13 @@ test('type : anciens noms (Autre, Narration) lus et acceptés comme Misc, Writin
   const s2 = ok(call('code-amohs', 'start', { id: 'n2', project: 'Fluffy', type: 'Writing' }));
   assert.equal(s2.running.id, 'n1', 'Narration puis Writing : même type, rien ne change');
 });
+
+test('tapTime : l\'heure du tap (widget) fait foi, source app, jamais dans le futur', () => {
+  const { call, store } = makeEnv({ clock: makeClock('2026-10-01T09:00:00+02:00') });
+  ok(call('code-amohs', 'start', { id: 'w1', project: 'Fluffy', tapTime: '2026-10-01T08:59:40+02:00' }));
+  const r = rows(store, 'Fluffy')[0];
+  assert.equal(r.start.toISOString(), new Date('2026-10-01T08:59:40+02:00').toISOString());
+  assert.equal(r.source, 'app');
+  ok(call('code-amohs', 'stop', { tapTime: '2026-10-01T09:30:00+02:00' }));
+  assert.equal(rows(store, 'Fluffy')[0].end.toISOString(), new Date('2026-10-01T09:00:00+02:00').toISOString());
+});

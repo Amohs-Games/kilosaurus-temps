@@ -183,10 +183,13 @@ var Core = (function () {
     return name;
   }
 
-  // Heure à laquelle l'action a eu lieu : celle du serveur, sauf pour une action rejouée hors ligne.
+  // Heure à laquelle l'action a eu lieu : celle du serveur, sauf pour une action rejouée hors ligne
+  // (clientTime) ou envoyée par un client qui affiche son état avant la réponse (tapTime, le widget).
+  // Jamais dans le futur.
   function actionTime(ctx) {
-    if (ctx.offline && ctx.clientTime) {
-      var t = new Date(ctx.clientTime);
+    var claimed = ctx.offline && ctx.clientTime ? ctx.clientTime : ctx.tapTime;
+    if (claimed) {
+      var t = new Date(claimed);
       if (!isNaN(t.getTime())) return t > ctx.now ? ctx.now : t;
     }
     return ctx.now;
@@ -407,6 +410,7 @@ var Core = (function () {
         agent: !!who.agent,
         offline: body.offline === true,
         clientTime: body.clientTime,
+        tapTime: body.tapTime,
       };
       var data = action(ctx, body);
       return { ok: true, data: data === undefined ? status(ctx) : data };

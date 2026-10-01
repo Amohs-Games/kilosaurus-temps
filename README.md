@@ -188,8 +188,9 @@ du temps continue d'arriver dans l'ancien fichier, que plus rien ne lit.
 ## L'app Android (APK) et son widget
 
 L'APK contient **l'app complète** (les mêmes écrans que la version web, embarqués dans le
-téléphone) et un **widget** pour l'écran d'accueil : le nom d'un projet, un chrono et quatre
-boutons de type. Il parle directement à l'API : aucun hébergement web n'est nécessaire.
+téléphone) et un **widget** lecture / stop pour l'écran d'accueil, pensé pour écrire : il lance le
+projet choisi en type Writing, avec la session en cours et le total du jour. Il parle directement à
+l'API : aucun hébergement web n'est nécessaire.
 
 ### Fabriquer l'APK
 
@@ -224,22 +225,27 @@ L'adresse de l'API est celle de `web/config.js` (pour l'app) et de `Api.DEFAULT_
 
 ### Poser le widget
 
-1. Appui long sur l'écran d'accueil → **Widgets** → **Kilosaurus Temps** → **Types de travail**
-   (4 × 1 case, redimensionnable). Après une mise à jour qui change sa taille, retirez l'ancien widget et reposez-le.
+1. Appui long sur l'écran d'accueil → **Widgets** → **Kilosaurus Temps** → **Lecture / stop**
+   (3 × 1 case, redimensionnable). Après une mise à jour qui change sa taille, retirez l'ancien
+   widget et reposez-le.
 2. Le réglage s'ouvre : code perso (déjà rempli si vous vous êtes connecté dans l'app), puis
-   **Charger mes projets**, choix du projet, **Enregistrer**.
+   **Charger mes projets**, choix du projet (Heirfall, par exemple), **Enregistrer**.
 
 Utilisation :
 
-- **Un tap sur un type** (Misc, Art, Dev, Writing) : compteur arrêté, il lance le projet du widget
-  avec ce type ; un autre type tourne, il bascule le compteur en cours vers ce type (même projet) ;
-  ce type tourne déjà, il met en pause. Le type en cours est en couleur pleine ; le bouton touché s'allume tout de suite, sans attendre le serveur.
-- **Toucher le nom du projet** rouvre le réglage (changer de projet ou de code).
-- **Sans réseau**, rien n'est enregistré, et le widget le dit. Toucher le message relit l'état.
+- **▶** lance le projet du widget en type **Writing**. **■** arrête le compteur en cours, quel que
+  soit son projet ou son type. Le type se change dans l'app.
+- **Aucune attente** : le widget change d'état au moment du tap, même sans réseau. Les taps partent
+  derrière, un par un et dans l'ordre, chacun avec son heure ; sans réseau ils attendent et repartent
+  tout seuls (toutes les minutes, au tap suivant, ou à l'ouverture de l'app). Le message « Pas de
+  réseau : N action(s) en attente » le signale. Un code refusé n'est pas renvoyé tout seul : corrigez-le
+  dans le réglage.
+- **Deux compteurs** : la session en cours, et « Aujourd'hui », le total du jour.
+- **Toucher le nom du projet** rouvre le réglage (changer de projet ou de code). Toucher le message
+  relance l'envoi ou relit l'état.
 - Un compteur lancé depuis l'app apparaît tout de suite sur le widget. Lancé depuis un autre
   appareil, il apparaît à la prochaine mise à jour (30 min au plus, limite d'Android) ou au
   prochain tap.
-- On peut poser plusieurs widgets, chacun avec son projet.
 
 ## Ajouter un projet
 

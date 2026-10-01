@@ -148,8 +148,9 @@ Chaque action d'écriture renvoie l'état frais (`status`), ce qui évite un sec
 
 ### Règles
 
-- **Horodatage.** Début et Fin viennent de l'horloge du serveur. Deux exceptions seulement :
-  les actions rejouées hors ligne (voir §5) et `logSession` (agent).
+- **Horodatage.** Début et Fin viennent de l'horloge du serveur. Trois exceptions seulement :
+  les actions rejouées hors ligne (voir §5), `logSession` (agent), et `tapTime` — l'heure du tap
+  envoyée par le widget, qui affiche son état avant la réponse (jamais dans le futur, Source `app`).
 - **Bascule.** `start` avec un compteur en cours ferme l'ancien à l'heure exacte du début du
   nouveau. Avec un décalage (« commencé il y a 30 min »), le début est `maintenant − décalage`,
   ramené au début du compteur fermé s'il le précède : deux sessions ne se chevauchent jamais.

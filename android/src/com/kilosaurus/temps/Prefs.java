@@ -3,14 +3,20 @@ package com.kilosaurus.temps;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 
 /**
- * Réglages et dernier état connu, stockés sur le téléphone.
+ * Réglages et état affiché, stockés sur le téléphone.
  * Le code et l'URL sont propres à l'appareil ; le projet est propre à chaque widget posé.
- * L'état « compteur en cours » est celui de la personne, partagé par tous ses widgets.
+ * L'état « compteur en cours » et le total du jour sont ceux de la personne, partagés par tous ses
+ * widgets. Le widget change cet état lui-même au tap ; la file `queue` porte les actions pas encore
+ * confirmées par le serveur, et tant qu'elle n'est pas vide, l'état du serveur ne l'écrase pas.
  */
 final class Prefs {
     private final SharedPreferences sp;
@@ -46,6 +52,8 @@ final class Prefs {
         sp.edit().remove("project_" + widgetId).apply();
     }
 
+    // ---- Compteur en cours ----
+
     boolean isRunning() { return sp.getLong("runningStart", 0) > 0; }
     String runningProject() { return sp.getString("runningProject", ""); }
     long runningStart() { return sp.getLong("runningStart", 0); }
@@ -58,28 +66,51 @@ final class Prefs {
         return type;
     }
 
-    /** État « compteur en cours » tel qu'il est mémorisé, pour le remettre si une requête échoue. */
-    static final class Running {
-        final String project, type;
-        final long start;
-        Running(String project, String type, long start) { this.project = project; this.type = type; this.start = start; }
+    /** Lance le compteur affiché, sans attendre le serveur. */
+    void startLocal(String project, String type, long at) {
+        sp.edit().putString("runningProject", project).putString("runningType", type).putLong("runningStart", at).apply();
     }
 
-    Running running() {
-        return new Running(sp.getString("runningProject", ""), sp.getString("runningType", "Misc"), sp.getLong("runningStart", 0));
+    /** Arrête le compteur affiché, sans attendre le serveur ; sa part d'aujourd'hui rejoint le total du jour. */
+    void stopLocal(long at) {
+        long from = Math.max(runningStart(), startOfToday());
+        long done = todayDoneMs() + Math.max(0, at - from);
+        sp.edit().remove("runningProject").remove("runningType").remove("runningStart")
+            .putString("todayKey", todayKey()).putLong("todayDoneMs", done).apply();
     }
 
-    /** Pose l'état affiché avant la réponse du serveur (null = rien en cours), ou remet un état mémorisé. */
-    void setRunning(Running r) {
-        SharedPreferences.Editor e = sp.edit();
-        if (r == null || r.start <= 0) e.remove("runningProject").remove("runningType").remove("runningStart");
-        else e.putString("runningProject", r.project).putString("runningType", r.type).putLong("runningStart", r.start);
-        e.apply();
+    // ---- Total du jour ----
+
+    static String todayKey() { return LocalDate.now().toString(); }
+
+    static long startOfToday() {
+        return LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
     }
 
-    /** Mémorise l'état renvoyé par l'API (champ running de status). */
+    /** Temps du jour hors compteur en cours (sessions terminées découpées à minuit, blocs du jour). */
+    long todayDoneMs() {
+        return todayKey().equals(sp.getString("todayKey", "")) ? sp.getLong("todayDoneMs", 0) : 0;
+    }
+
+    // ---- File des actions pas encore confirmées ----
+
+    JSONArray queue() {
+        try { return new JSONArray(sp.getString("queue", "[]")); } catch (JSONException e) { return new JSONArray(); }
+    }
+
+    void setQueue(JSONArray q) {
+        sp.edit().putString("queue", q.toString()).commit();
+    }
+
+    // ---- État renvoyé par le serveur ----
+
+    /**
+     * Mémorise l'état renvoyé par l'API. Ignoré tant que des actions du widget attendent : il les
+     * précède et effacerait ce que le widget montre.
+     */
     void saveStatus(JSONObject data) {
         SharedPreferences.Editor e = sp.edit().putString("me", data.optString("me", ""));
+        if (queue().length() > 0) { e.apply(); return; }
         JSONObject running = data.optJSONObject("running");
         if (running != null) {
             e.putString("runningProject", running.optString("project", ""));
@@ -88,6 +119,29 @@ final class Prefs {
         } else {
             e.remove("runningProject").remove("runningType").remove("runningStart");
         }
+        JSONArray today = data.optJSONArray("today");
+        if (today != null) e.putString("todayKey", todayKey()).putLong("todayDoneMs", doneMs(today));
         e.apply();
+    }
+
+    private static long doneMs(JSONArray today) {
+        long midnight = startOfToday();
+        String key = todayKey();
+        long sum = 0;
+        for (int i = 0; i < today.length(); i++) {
+            JSONObject r = today.optJSONObject(i);
+            if (r == null) continue;
+            String start = r.optString("start", "");
+            if (start.isEmpty() || "null".equals(start)) {
+                if (key.equals(r.optString("date"))) sum += Math.round(r.optDouble("hours", 0) * 3600000);
+                continue;
+            }
+            String end = r.optString("end", "");
+            if (end.isEmpty() || "null".equals(end)) continue; // en cours : compté par le chrono
+            long a = Math.max(Instant.parse(start).toEpochMilli(), midnight);
+            long b = Instant.parse(end).toEpochMilli();
+            if (b > a) sum += b - a;
+        }
+        return sum;
     }
 }
