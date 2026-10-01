@@ -16,22 +16,30 @@ import org.json.JSONObject;
 import java.util.UUID;
 
 /**
- * Widget Start / Stop. Un tap envoie une seule requête : stop si un compteur tourne (quel que soit
- * son projet), sinon start sur le projet du widget. Le chrono affiché est géré par Android
+ * Widget à quatre boutons de type (Autre, Dev, Art, Narration). Un tap envoie une seule requête :
+ * lancer, basculer de type, ou mettre en pause. Le chrono affiché est géré par Android
  * (Chronometer), sans réveiller l'app chaque seconde.
  */
 public class WidgetProvider extends AppWidgetProvider {
-    static final String ACTION_TOGGLE = "com.kilosaurus.temps.TOGGLE";
+    static final String ACTION_TYPE = "com.kilosaurus.temps.TYPE";
     static final String ACTION_REFRESH = "com.kilosaurus.temps.REFRESH";
+    static final String EXTRA_TYPE = "type";
+
+    // Même ordre et mêmes couleurs que la liste du serveur (Core.gs).
+    static final String[] TYPES = { "Autre", "Dev", "Art", "Narration" };
+    static final int[] BUTTONS = { R.id.type_autre, R.id.type_dev, R.id.type_art, R.id.type_narration };
+    static final int[] ON = { R.drawable.type_autre_on, R.drawable.type_dev_on, R.drawable.type_art_on, R.drawable.type_narration_on };
+    static final int[] OFF = { R.drawable.type_autre_off, R.drawable.type_dev_off, R.drawable.type_art_off, R.drawable.type_narration_off };
 
     @Override
     public void onReceive(Context ctx, Intent intent) {
         String action = intent.getAction();
-        if (ACTION_TOGGLE.equals(action)) {
+        if (ACTION_TYPE.equals(action)) {
             final int widgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID);
+            final String type = intent.getStringExtra(EXTRA_TYPE);
             final PendingResult pending = goAsync();
             new Thread(() -> {
-                try { toggle(ctx, widgetId); } finally { pending.finish(); }
+                try { tap(ctx, widgetId, type == null ? TYPES[0] : type); } finally { pending.finish(); }
             }).start();
         } else if (ACTION_REFRESH.equals(action) || AppWidgetManager.ACTION_APPWIDGET_UPDATE.equals(action)) {
             renderAll(ctx);
@@ -50,7 +58,11 @@ public class WidgetProvider extends AppWidgetProvider {
         for (int id : widgetIds) p.forgetWidget(id);
     }
 
-    private static void toggle(Context ctx, int widgetId) {
+    /**
+     * Un tap sur un type : arrêté → lance le projet du widget avec ce type ; un autre type tourne →
+     * bascule le compteur en cours vers ce type ; ce type tourne → pause (stop).
+     */
+    private static void tap(Context ctx, int widgetId, String type) {
         Prefs p = new Prefs(ctx);
         if (p.code().isEmpty()) {
             p.setMessage("Touche le nom du projet pour régler le widget.");
@@ -58,8 +70,8 @@ public class WidgetProvider extends AppWidgetProvider {
             return;
         }
         boolean running = p.isRunning();
-        String project = p.widgetProject(widgetId);
-        if (!running && project.isEmpty()) {
+        String project = running ? p.runningProject() : p.widgetProject(widgetId);
+        if (project.isEmpty()) {
             p.setMessage("Touche le nom du projet pour en choisir un.");
             renderAll(ctx);
             return;
@@ -68,10 +80,10 @@ public class WidgetProvider extends AppWidgetProvider {
         renderAll(ctx);
         try {
             JSONObject body = new JSONObject().put("code", p.code());
-            if (running) {
+            if (running && type.equals(p.runningType())) {
                 body.put("action", "stop");
             } else {
-                body.put("action", "start").put("id", UUID.randomUUID().toString()).put("project", project);
+                body.put("action", "start").put("id", UUID.randomUUID().toString()).put("project", project).put("type", type);
             }
             p.saveStatus(Api.call(p.url(), body));
             p.setMessage("");
@@ -116,27 +128,30 @@ public class WidgetProvider extends AppWidgetProvider {
         RemoteViews v = new RemoteViews(ctx.getPackageName(), R.layout.widget);
 
         if (p.isRunning()) {
-            v.setTextViewText(R.id.title, p.runningProject());
+            v.setTextViewText(R.id.title, p.runningProject() + " · " + p.runningType());
             long base = SystemClock.elapsedRealtime() - (System.currentTimeMillis() - p.runningStart());
             v.setChronometer(R.id.chrono, base, null, true);
             v.setViewVisibility(R.id.chrono, View.VISIBLE);
-            v.setTextViewText(R.id.button, "STOP");
-            v.setInt(R.id.button, "setBackgroundResource", R.drawable.btn_stop);
         } else {
             String project = p.widgetProject(widgetId);
             v.setTextViewText(R.id.title, project.isEmpty() ? "Choisir un projet" : project);
             v.setChronometer(R.id.chrono, SystemClock.elapsedRealtime(), null, false);
             v.setViewVisibility(R.id.chrono, View.GONE);
-            v.setTextViewText(R.id.button, "START");
-            v.setInt(R.id.button, "setBackgroundResource", R.drawable.btn_start);
+        }
+
+        String active = p.isRunning() ? p.runningType() : "";
+        for (int i = 0; i < TYPES.length; i++) {
+            boolean on = TYPES[i].equals(active);
+            v.setInt(BUTTONS[i], "setBackgroundResource", on ? ON[i] : OFF[i]);
+            v.setTextColor(BUTTONS[i], on ? 0xFFFFFFFF : ctx.getColor(R.color.fg));
+            v.setOnClickPendingIntent(BUTTONS[i], typeIntent(ctx, widgetId, i));
         }
 
         String message = p.message();
         v.setTextViewText(R.id.message, message);
         v.setViewVisibility(R.id.message, message.isEmpty() ? View.GONE : View.VISIBLE);
+        v.setOnClickPendingIntent(R.id.message, refreshIntent(ctx, widgetId));
 
-        v.setOnClickPendingIntent(R.id.button, broadcast(ctx, ACTION_TOGGLE, widgetId));
-        v.setOnClickPendingIntent(R.id.message, broadcast(ctx, ACTION_REFRESH, widgetId));
         Intent config = new Intent(ctx, ConfigActivity.class)
             .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
             .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
@@ -146,10 +161,17 @@ public class WidgetProvider extends AppWidgetProvider {
         mgr.updateAppWidget(widgetId, v);
     }
 
-    private static PendingIntent broadcast(Context ctx, String action, int widgetId) {
-        Intent i = new Intent(ctx, WidgetProvider.class).setAction(action)
+    // Codes de requête distincts par widget et par bouton : sinon Android réutilise le même intent.
+    private static PendingIntent typeIntent(Context ctx, int widgetId, int index) {
+        Intent i = new Intent(ctx, WidgetProvider.class).setAction(ACTION_TYPE)
+            .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
+            .putExtra(EXTRA_TYPE, TYPES[index]);
+        return PendingIntent.getBroadcast(ctx, widgetId * 8 + index, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    private static PendingIntent refreshIntent(Context ctx, int widgetId) {
+        Intent i = new Intent(ctx, WidgetProvider.class).setAction(ACTION_REFRESH)
             .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId);
-        int requestCode = widgetId * 2 + (ACTION_TOGGLE.equals(action) ? 0 : 1);
-        return PendingIntent.getBroadcast(ctx, requestCode, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        return PendingIntent.getBroadcast(ctx, widgetId * 8 + 7, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 }

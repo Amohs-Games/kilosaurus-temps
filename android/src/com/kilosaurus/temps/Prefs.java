@@ -49,6 +49,7 @@ final class Prefs {
     boolean isRunning() { return sp.getLong("runningStart", 0) > 0; }
     String runningProject() { return sp.getString("runningProject", ""); }
     long runningStart() { return sp.getLong("runningStart", 0); }
+    String runningType() { return sp.getString("runningType", "Autre"); }
 
     /** Mémorise l'état renvoyé par l'API (champ running de status). */
     void saveStatus(JSONObject data) {
@@ -56,9 +57,10 @@ final class Prefs {
         JSONObject running = data.optJSONObject("running");
         if (running != null) {
             e.putString("runningProject", running.optString("project", ""));
+            e.putString("runningType", running.optString("type", "Autre"));
             e.putLong("runningStart", Instant.parse(running.optString("start")).toEpochMilli());
         } else {
-            e.remove("runningProject").remove("runningStart");
+            e.remove("runningProject").remove("runningType").remove("runningStart");
         }
         e.apply();
     }

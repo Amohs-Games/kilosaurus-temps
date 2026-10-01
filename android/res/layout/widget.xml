@@ -38,16 +38,17 @@
             android:visibility="gone" />
     </LinearLayout>
 
-    <Button
-        android:id="@+id/button"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="52dp"
         android:layout_marginTop="6dp"
-        android:background="@drawable/btn_start"
-        android:textColor="#FFFFFF"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        android:text="START" />
+        android:orientation="horizontal">
+
+        <Button android:id="@+id/type_autre" style="@style/TypeButton" android:text="Autre" />
+        <Button android:id="@+id/type_dev" style="@style/TypeButton" android:text="Dev" />
+        <Button android:id="@+id/type_art" style="@style/TypeButton" android:text="Art" />
+        <Button android:id="@+id/type_narration" style="@style/TypeButton" android:text="Narr." />
+    </LinearLayout>
 
     <TextView
         android:id="@+id/message"

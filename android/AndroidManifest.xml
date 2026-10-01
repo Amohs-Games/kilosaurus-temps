@@ -23,7 +23,7 @@
         <activity
             android:name=".ConfigActivity"
             android:exported="true"
-            android:label="Bouton Start / Stop"
+            android:label="Réglage du widget"
             android:excludeFromRecents="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
@@ -33,7 +33,7 @@
         <receiver
             android:name=".WidgetProvider"
             android:exported="true"
-            android:label="Start / Stop">
+            android:label="Types de travail">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
