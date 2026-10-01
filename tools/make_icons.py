@@ -31,6 +31,8 @@ def main():
     padded(logo, 512, 0.8).save(WEB / "icon-maskable-512.png")
     square(logo, 144).save(ANDROID / "mipmap-xxhdpi" / "ic_launcher.png")
     square(logo, 192).save(ANDROID / "mipmap-xxxhdpi" / "ic_launcher.png")
+    # Mini-fenêtre de bureau : icône Windows (fenêtre, raccourcis).
+    square(logo, 256).save(ROOT / "desktop" / "icon.ico", sizes=[(16, 16), (32, 32), (48, 48), (256, 256)])
     print("Icônes écrites dans", WEB, "et", ANDROID)
 
 

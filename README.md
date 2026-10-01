@@ -257,7 +257,12 @@ cd desktop && npm install && npm start
 ```
 
 Le premier lancement l'inscrit au démarrage de Windows ; il faut ensuite saisir son code une fois
-(le code `PC`). Si `npm install` n'a pas téléchargé Electron (`node_modules/electron/dist` vide),
+(le code `PC`). Pour pouvoir la relancer à la main (raccourci **Kilosaurus Temps** sur le bureau et
+dans le menu Démarrer) : `powershell -ExecutionPolicy Bypass -File desktop\install-shortcuts.ps1`.
+
+Au démarrage de Windows, si le réseau n'est pas encore là, la fenêtre s'affiche quand même et
+recharge la page toutes les 10 s. Les lancements et les erreurs sont notés dans
+`%APPDATA%\kilosaurus-temps-desktop\desktop.log`. Si `npm install` n'a pas téléchargé Electron (`node_modules/electron/dist` vide),
 lancez `node node_modules/electron/install.js`. Le démarrage automatique pointe vers ce dossier :
 si le dépôt est déplacé, relancez `npm start` depuis le nouvel emplacement.
 

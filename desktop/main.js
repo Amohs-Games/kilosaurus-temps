@@ -15,12 +15,27 @@ const WIDTH = 300;
 const MARGIN = 12;
 const SHORTCUT = 'Control+Alt+K';
 const LOGO = path.join(__dirname, '..', 'kilo_logo.png');
+const ICON = path.join(__dirname, 'icon.ico');
+const SHOW_FALLBACK_MS = 4000;
+const RETRY_LOAD_MS = 10000;
 
 let win = null;
 let tray = null;
 let settings = null;
 
 const settingsPath = () => path.join(app.getPath('userData'), 'window.json');
+
+// Journal court (desktop.log, à côté de window.json) : lancements et erreurs, pour comprendre une
+// fenêtre qui ne s'affiche pas. Gardé sous 100 Ko.
+function log(line) {
+  try {
+    const file = path.join(app.getPath('userData'), 'desktop.log');
+    if (fs.existsSync(file) && fs.statSync(file).size > 100000) fs.renameSync(file, file + '.old');
+    fs.appendFileSync(file, new Date().toISOString() + ' ' + line + '\n');
+  } catch (e) { /* le journal ne doit jamais empêcher l'app de tourner */ }
+}
+
+process.on('uncaughtException', (e) => log('erreur : ' + (e && e.stack || e)));
 
 function loadSettings() {
   let saved = {};
@@ -57,14 +72,23 @@ function createWindow() {
     show: false,
     backgroundColor: '#131316',
     title: 'Kilosaurus Temps',
-    icon: LOGO,
+    icon: fs.existsSync(ICON) ? ICON : LOGO,
     webPreferences: { preload: path.join(__dirname, 'preload.js') },
   }));
   applyOnTop();
   win.setMovable(!settings.locked);
-  win.loadURL(SITE + '?mini=1');
+  // Affichée dès que possible, et au plus tard après quelques secondes : au démarrage de Windows le
+  // réseau peut manquer, la page ne se charge pas, et « ready-to-show » pourrait ne jamais venir.
   win.once('ready-to-show', () => win.show());
+  setTimeout(() => { if (win && !win.isVisible()) win.show(); }, SHOW_FALLBACK_MS);
   win.webContents.on('did-finish-load', () => win.webContents.send('locked', settings.locked));
+  // Pas de réseau (démarrage, Wi-Fi qui se connecte) : nouvel essai jusqu'à ce que la page arrive.
+  win.webContents.on('did-fail-load', (_e, code, description, url, isMainFrame) => {
+    if (!isMainFrame) return;
+    log('chargement raté (' + code + ' ' + description + '), nouvel essai dans ' + RETRY_LOAD_MS / 1000 + ' s');
+    setTimeout(() => { if (win) loadSite(); }, RETRY_LOAD_MS);
+  });
+  loadSite();
   win.on('moved', () => {
     const b = win.getBounds();
     settings.x = b.x;
@@ -76,6 +100,10 @@ function createWindow() {
     shell.openExternal(url);
     return { action: 'deny' };
   });
+}
+
+function loadSite() {
+  win.loadURL(SITE + '?mini=1').catch(() => { /* signalé par did-fail-load */ });
 }
 
 function applyOnTop() {
@@ -108,6 +136,19 @@ function applyAutostart() {
     path: process.execPath,
     args: app.isPackaged ? [] : [app.getAppPath()],
   });
+}
+
+// Au démarrage de Windows, la zone près de l'horloge peut ne pas être prête : nouvel essai.
+function createTray(attempt = 1) {
+  try {
+    tray = new Tray(nativeImage.createFromPath(LOGO).resize({ width: 16, height: 16 }));
+    tray.setToolTip('Kilosaurus Temps');
+    tray.on('click', toggleVisible);
+    buildMenu();
+  } catch (e) {
+    log('icône près de l\'horloge impossible (essai ' + attempt + ') : ' + e.message);
+    if (attempt < 10) setTimeout(() => createTray(attempt + 1), 3000);
+  }
 }
 
 function buildMenu() {
@@ -153,17 +194,15 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', () => { if (win) { win.show(); applyOnTop(); } });
 
   app.whenReady().then(() => {
+    log('lancement (' + process.execPath + ')');
     settings = loadSettings();
     createWindow();
     applyAutostart();
-    tray = new Tray(nativeImage.createFromPath(LOGO).resize({ width: 16, height: 16 }));
-    tray.setToolTip('Kilosaurus Temps');
-    tray.on('click', toggleVisible);
-    buildMenu();
-    globalShortcut.register(SHORTCUT, toggleVisible);
+    createTray();
+    if (!globalShortcut.register(SHORTCUT, toggleVisible)) log('raccourci ' + SHORTCUT + ' déjà pris');
   });
 
-  app.on('will-quit', () => globalShortcut.unregisterAll());
+  app.on('will-quit', () => { log('fermeture'); globalShortcut.unregisterAll(); });
   // La fenêtre masquée n'arrête pas l'app : elle vit dans l'icône près de l'horloge.
   app.on('window-all-closed', () => {});
 }
