@@ -390,3 +390,61 @@ test('erreur interne → server, sans faire planter l\'appelant', () => {
   const { call } = makeEnv({ store });
   fails(call('code-amohs', 'status'), 'server');
 });
+
+test('type : Autre par défaut, enregistré sur la ligne', () => {
+  const { call, store } = makeEnv();
+  const s = ok(call('code-amohs', 'start', { id: 't1', project: 'Fluffy' }));
+  assert.equal(s.running.type, 'Autre');
+  assert.equal(rows(store, 'Fluffy')[0].type, 'Autre');
+});
+
+test('type : bascule de type sur le même projet, sans trou', () => {
+  const { call, store, clock } = makeEnv();
+  ok(call('code-amohs', 'start', { id: 't1', project: 'Fluffy', type: 'Dev' }));
+  clock.advance(30);
+  const s = ok(call('code-amohs', 'start', { id: 't2', project: 'Fluffy', type: 'Art' }));
+  const [a, b] = rows(store, 'Fluffy');
+  assert.equal(a.type, 'Dev');
+  assert.equal(a.end.getTime(), b.start.getTime());
+  assert.equal(a.hours, 0.5);
+  assert.equal(s.running.type, 'Art');
+  assert.equal(s.last.type, 'Dev');
+});
+
+test('type : même projet et même type → rien', () => {
+  const { call, store, clock } = makeEnv();
+  ok(call('code-amohs', 'start', { id: 't1', project: 'Fluffy', type: 'Dev' }));
+  clock.advance(10);
+  const s = ok(call('code-amohs', 'start', { id: 't2', project: 'Fluffy', type: 'Dev' }));
+  assert.equal(s.running.id, 't1');
+  assert.equal(rows(store, 'Fluffy').length, 1);
+});
+
+test('type : start sans type garde le type du compteur en cours', () => {
+  const { call, clock } = makeEnv();
+  ok(call('code-amohs', 'start', { id: 't1', project: 'Fluffy', type: 'Dev' }));
+  clock.advance(10);
+  const s = ok(call('code-amohs', 'start', { id: 't2', project: 'Studio' }));
+  assert.equal(s.running.type, 'Dev');
+  assert.equal(s.running.project, 'Studio');
+});
+
+test('type : inconnu → invalid ; blocs et sessions d\'agent typés', () => {
+  const { call, store } = makeEnv();
+  fails(call('code-amohs', 'start', { id: 't1', project: 'Fluffy', type: 'Musique' }), 'invalid');
+  ok(call('code-amohs', 'logBlock', { id: 'b1', project: 'Fluffy', hours: 2, type: 'Narration' }));
+  assert.equal(rows(store, 'Fluffy')[0].type, 'Narration');
+  ok(call('code-alex-claude', 'logSession', {
+    id: 's1', project: 'Fluffy', start: '2026-10-01T06:00:00+02:00', end: '2026-10-01T07:00:00+02:00',
+  }));
+  assert.equal(rows(store, 'Fluffy')[1].type, 'Autre');
+});
+
+test('type : une ligne sans type (historique) vaut Autre', () => {
+  const { call, store } = makeEnv();
+  store.insert('Fluffy', {
+    id: 'old', person: 'Amohs', date: new Date('2026-09-30T00:00:00+02:00'), start: '', end: '', hours: 4,
+    note: '', source: 'app', created: new Date('2026-09-30T10:00:00+02:00'), corrected: '', touched: new Date('2026-09-30T10:00:00+02:00'),
+  });
+  assert.equal(ok(call('code-amohs', 'status')).last.type, 'Autre');
+});

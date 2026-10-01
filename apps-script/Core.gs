@@ -16,6 +16,15 @@ var Core = (function () {
   var FORBIDDEN_NAME = /[\[\]*?\/\\:]/;
   var DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
   var WRITE_ACTIONS = ['start', 'stop', 'note', 'logBlock', 'logSession', 'editLast', 'addProject'];
+  // Types de travail, dans l'ordre d'affichage. Une ligne sans type (historique) vaut Autre.
+  var TYPES = [
+    { name: 'Autre', color: '#9B20F9' },
+    { name: 'Dev', color: '#3B82F6' },
+    { name: 'Art', color: '#EC4899' },
+    { name: 'Narration', color: '#22C55E' },
+  ];
+  var TYPE_NAMES = TYPES.map(function (t) { return t.name; });
+  var DEFAULT_TYPE = 'Autre';
 
   // Pas d'instanceof : une Date venue d'un autre contexte JS (tests Node) doit aussi être reconnue.
   function isDate(v) {
@@ -47,6 +56,10 @@ var Core = (function () {
     return running[0] || null;
   }
 
+  function typeOf(row) {
+    return TYPE_NAMES.indexOf(row.type) >= 0 ? row.type : DEFAULT_TYPE;
+  }
+
   function myLast(ctx) {
     var done = myRows(ctx).filter(function (r) {
       return !isRunning(r) && r.source !== 'report' && isDate(r.touched);
@@ -66,6 +79,7 @@ var Core = (function () {
     return {
       id: row.id,
       project: row.project,
+      type: typeOf(row),
       date: isDate(row.date) ? ctx.tz.dayKey(row.date) : null,
       start: isDate(row.start) ? row.start.toISOString() : null,
       end: isDate(row.end) ? row.end.toISOString() : null,
@@ -126,6 +140,12 @@ var Core = (function () {
     return h;
   }
 
+  function requireType(value, fallback) {
+    if (value === undefined || value === null || value === '') return fallback;
+    if (TYPE_NAMES.indexOf(value) < 0) fail('Type inconnu : ' + value + '. Types : ' + TYPE_NAMES.join(', ') + '.');
+    return value;
+  }
+
   // Heure à laquelle l'action a eu lieu : celle du serveur, sauf pour une action rejouée hors ligne.
   function actionTime(ctx) {
     if (ctx.offline && ctx.clientTime) {
@@ -149,6 +169,7 @@ var Core = (function () {
       end: fields.end || '',
       hours: fields.hours === undefined ? '' : fields.hours,
       note: fields.note || '',
+      type: fields.type || DEFAULT_TYPE,
       source: source(ctx),
       created: ctx.now,
       touched: ctx.now,
@@ -188,15 +209,18 @@ var Core = (function () {
       var offset = p.offsetMinutes === undefined ? 0 : Number(p.offsetMinutes);
       if (OFFSETS.indexOf(offset) < 0) fail('Décalage autorisé : 0, 15, 30 ou 60 minutes.');
       var note = cleanNote(p.note);
+      var running = myRunning(ctx);
+      var type = requireType(p.type, running ? typeOf(running) : DEFAULT_TYPE);
       if (findById(ctx, id)) return;
+      // Relancer ce qui tourne déjà n'est pas une action.
+      if (running && running.project === project && typeOf(running) === type) return;
 
       var start = new Date(actionTime(ctx).getTime() - offset * 60000);
-      var running = myRunning(ctx);
       if (running) {
         if (start < running.start) start = running.start;
         close(ctx, running, start);
       }
-      ctx.store.insert(project, newRow(ctx, { id: id, date: sessionDate(ctx, start), start: start, note: note }));
+      ctx.store.insert(project, newRow(ctx, { id: id, date: sessionDate(ctx, start), start: start, note: note, type: type }));
     },
 
     stop: function (ctx, p) {
@@ -230,12 +254,13 @@ var Core = (function () {
       var project = requireProject(ctx, p.project);
       var hours = requireBlockHours(p.hours);
       var note = cleanNote(p.note);
+      var type = requireType(p.type, DEFAULT_TYPE);
       var today = ctx.tz.dayKey(ctx.now);
       var key = p.date === undefined || p.date === null ? ctx.tz.dayKey(actionTime(ctx)) : p.date;
       if (typeof key !== 'string' || !DAY_KEY.test(key)) fail('Date attendue au format aaaa-mm-jj.');
       if (key > today) fail('La date ne peut pas être dans le futur.');
       if (findById(ctx, id)) return;
-      ctx.store.insert(project, newRow(ctx, { id: id, date: ctx.tz.dayStart(key), hours: hours, note: note }));
+      ctx.store.insert(project, newRow(ctx, { id: id, date: ctx.tz.dayStart(key), hours: hours, note: note, type: type }));
     },
 
     logSession: function (ctx, p) {
@@ -245,6 +270,7 @@ var Core = (function () {
       var start = parseInstant(p.start, 'Début');
       var end = parseInstant(p.end, 'Fin');
       var note = cleanNote(p.note);
+      var type = requireType(p.type, DEFAULT_TYPE);
       if (end <= start) fail('La fin doit être après le début.');
       if (end > ctx.now) fail('La fin ne peut pas être dans le futur.');
       if (end - start > MAX_SESSION_MS) fail('Une session ne peut pas dépasser 24 h.');
@@ -256,7 +282,7 @@ var Core = (function () {
       })[0];
       if (overlap) fail('Chevauche une session existante (' + overlap.project + ', ' + ctx.tz.fmt(overlap.start) + ').');
       ctx.store.insert(project, newRow(ctx, {
-        id: id, date: sessionDate(ctx, start), start: start, end: end, hours: hoursBetween(start, end), note: note,
+        id: id, date: sessionDate(ctx, start), start: start, end: end, hours: hoursBetween(start, end), note: note, type: type,
       }));
     },
 
@@ -341,5 +367,5 @@ var Core = (function () {
     return WRITE_ACTIONS.indexOf(action) >= 0;
   }
 
-  return { handleRequest: handleRequest, isWrite: isWrite, BLOCK_HOURS: BLOCK_HOURS };
+  return { handleRequest: handleRequest, isWrite: isWrite, BLOCK_HOURS: BLOCK_HOURS, TYPES: TYPES };
 })();
