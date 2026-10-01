@@ -67,8 +67,9 @@ type.
 
 ### `status` gagne `types` et `today`
 
-- `types` : la liste des types, dans l'ordre, avec leurs couleurs. Les clients ne codent pas la
-  liste en dur.
+- `types` : la liste des types, dans l'ordre, avec leurs couleurs. L'app web s'en sert (avec la
+  liste ci-dessus en secours, pour un état mis en cache par une version précédente). Le widget, à
+  disposition fixe, a ses quatre boutons en dur.
 - `running` et `last` portent `type`.
 - `today` : mes lignes qui touchent la journée en cours (sessions commencées hier et encore en
   cours comprises), au format de `running`. Chaque écriture renvoyant `status`, la frise du jour est
