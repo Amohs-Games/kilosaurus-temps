@@ -4,7 +4,8 @@
  * Onglet de projet = tout onglet dont le nom ne commence pas par « _ ». Les colonnes sont fixes
  * (voir COLUMNS) et ne contiennent aucune formule : on peut écrire partout.
  */
-var COLUMNS = ['id', 'person', 'date', 'start', 'end', 'hours', 'note', 'source', 'created', 'corrected', 'touched'];
+var COLUMNS = ['id', 'person', 'date', 'start', 'end', 'hours', 'note', 'source', 'created', 'corrected', 'touched', 'type'];
+var TYPE_HEADER = 'Type';
 var CONFIG_SHEET = '_Config';
 var CORRECTIONS_SHEET = '_Corrections';
 var TEMPLATE_SHEET = '_Modèle';
@@ -13,6 +14,25 @@ function SheetStore(ss) {
   this.ss = ss;
   this.cfg = null;
   this.rowsCache = null;
+}
+
+// La colonne Type (L) a été ajoutée après la v1 : un onglet plus ancien la reçoit à sa première
+// écriture, en-tête compris. Un onglet importé peut avoir moins de 12 colonnes : on les crée.
+function ensureTypeHeader(sheet) {
+  var max = sheet.getMaxColumns();
+  if (max < COLUMNS.length) sheet.insertColumnsAfter(max, COLUMNS.length - max);
+  var cell = sheet.getRange(1, COLUMNS.length);
+  if (cell.getValue() !== '') return;
+  sheet.getRange(1, COLUMNS.length - 1).copyTo(cell, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+  cell.setValue(TYPE_HEADER);
+}
+
+// Pose la colonne Type sur tous les onglets de projet et sur _Modèle.
+function ensureTypeHeaders(ss) {
+  ss.getSheets().forEach(function (s) {
+    var name = s.getName();
+    if (name.charAt(0) !== '_' || name === TEMPLATE_SHEET) ensureTypeHeader(s);
+  });
 }
 
 SheetStore.prototype.config = function () {
@@ -51,11 +71,13 @@ SheetStore.prototype.allRows = function () {
     var sheet = ss.getSheetByName(project);
     var last = sheet.getLastRow();
     if (last < 2) return;
-    var values = sheet.getRange(2, 1, last - 1, COLUMNS.length).getValues();
+    // Un onglet ancien peut ne pas encore avoir la colonne Type : on ne lit que ce qui existe.
+    var width = Math.min(COLUMNS.length, sheet.getMaxColumns());
+    var values = sheet.getRange(2, 1, last - 1, width).getValues();
     values.forEach(function (v, i) {
       if (v[0] === '' && v[1] === '') return;
       var row = { project: project, ref: { project: project, row: i + 2 } };
-      COLUMNS.forEach(function (key, c) { row[key] = v[c]; });
+      COLUMNS.forEach(function (key, c) { row[key] = c < width ? v[c] : ''; });
       out.push(row);
     });
   });
@@ -74,6 +96,7 @@ SheetStore.prototype.firstFreeRow = function (sheet, column) {
 
 SheetStore.prototype.insert = function (project, row) {
   var sheet = this.ss.getSheetByName(project);
+  ensureTypeHeader(sheet);
   var r = this.firstFreeRow(sheet, 2);
   sheet.getRange(r, 1, 1, COLUMNS.length).setValues([COLUMNS.map(function (key) { return row[key]; })]);
   this.rowsCache = null;
@@ -81,6 +104,7 @@ SheetStore.prototype.insert = function (project, row) {
 
 SheetStore.prototype.update = function (ref, patch) {
   var sheet = this.ss.getSheetByName(ref.project);
+  if (patch.type !== undefined) ensureTypeHeader(sheet);
   Object.keys(patch).forEach(function (key) {
     sheet.getRange(ref.row, COLUMNS.indexOf(key) + 1).setValue(patch[key]);
   });
@@ -98,6 +122,7 @@ SheetStore.prototype.createProject = function (name) {
   var lastProject = -1;
   ss.getSheets().forEach(function (s, i) { if (s.getName().charAt(0) !== '_') lastProject = i; });
   var copy = ss.getSheetByName(TEMPLATE_SHEET).copyTo(ss).setName(name);
+  ensureTypeHeader(copy);
   if (copy.isSheetHidden()) copy.showSheet();
   ss.setActiveSheet(copy);
   ss.moveActiveSheet(lastProject + 2);

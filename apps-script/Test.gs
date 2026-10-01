@@ -12,6 +12,9 @@ function runSelfTest() {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) throw new Error('Sheet occupée, réessaie dans un instant.');
 
+  // La colonne Type est posée avant la photo : sinon le test la verrait apparaître et crierait au changement.
+  ensureTypeHeaders(ss);
+  SpreadsheetApp.flush();
   var before = snapshot(ss);
   var corrSheet = ss.getSheetByName(CORRECTIONS_SHEET);
   var corrStart = new SheetStore(ss).firstFreeRow(corrSheet, 1);
@@ -138,8 +141,18 @@ function selfTestScenario(t) {
   check(s && s.running && s.running.id === 'st-6', 'Un stop périmé ne ferme pas le compteur récent');
   ok(t.call('human', 'stop'), 'Arrêt final');
 
+  s = ok(t.call('human', 'start', { id: 'st-7', project: t.projB, type: 'Dev' }), 'Lancement typé');
+  check(s && s.running && s.running.type === 'Dev', 'Le compteur tourne en Dev');
+  t.advance(20);
+  s = ok(t.call('human', 'start', { id: 'st-8', project: t.projB, type: 'Art' }), 'Bascule de type');
+  check(s && s.last && s.last.id === 'st-7' && s.last.type === 'Dev' && s.last.hours === 0.33, 'Dev fermé à 0,33 h par la bascule de type');
+  s = ok(t.call('human', 'start', { id: 'st-9', project: t.projB, type: 'Art' }), 'Relance du même type');
+  check(s && s.running && s.running.id === 'st-8', 'Relancer le même projet et le même type ne fait rien');
+  refused(t.call('human', 'start', { id: 'st-w', project: t.projB, type: 'Musique' }), 'Type inconnu');
+  ok(t.call('human', 'stop'), 'Arrêt après bascule de type');
+
   check(t.rowCount(t.projA) === 3, 'A contient 3 lignes (' + t.rowCount(t.projA) + ')');
-  check(t.rowCount(t.projB) === 3, 'B contient 3 lignes (' + t.rowCount(t.projB) + ')');
+  check(t.rowCount(t.projB) === 5, 'B contient 5 lignes (' + t.rowCount(t.projB) + ')');
   var fields = t.corrections().map(function (c) { return c.field; }).join(', ');
   check(fields === 'Fin, Heures, Fin (oubli)', 'Corrections attendues : Fin, Heures, Fin (oubli) — trouvées : ' + fields);
 

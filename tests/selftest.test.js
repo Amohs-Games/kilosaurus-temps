@@ -92,3 +92,46 @@ test('le parcours de runSelfTest passe sur un store en mémoire', () => {
   });
   assert.deepEqual(Array.from(failures), []);
 });
+
+// Feuille Google minimale en mémoire : assez pour SheetStore (lecture, écriture, colonnes).
+function fakeSheet(name, header, maxColumns) {
+  const cells = [header.slice()];
+  let maxCols = maxColumns;
+  const range = (r, c, nr, nc) => ({
+    getValues: () => {
+      if (c + nc - 1 > maxCols) throw new Error('Plage hors de la feuille');
+      return Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => (cells[r - 1 + i] || [])[c - 1 + j] ?? ''));
+    },
+    getValue: () => { if (c > maxCols) throw new Error('Plage hors de la feuille'); return (cells[r - 1] || [])[c - 1] ?? ''; },
+    setValues: (v) => {
+      if (c + nc - 1 > maxCols) throw new Error('Plage hors de la feuille');
+      v.forEach((row, i) => { cells[r - 1 + i] = cells[r - 1 + i] || []; row.forEach((x, j) => { cells[r - 1 + i][c - 1 + j] = x; }); });
+    },
+    setValue: (x) => { if (c > maxCols) throw new Error('Plage hors de la feuille'); cells[r - 1] = cells[r - 1] || []; cells[r - 1][c - 1] = x; },
+    copyTo: () => {},
+  });
+  return {
+    cells,
+    getName: () => name,
+    getLastRow: () => cells.length,
+    getMaxColumns: () => maxCols,
+    insertColumnsAfter: (after, n) => { maxCols += n; },
+    getRange: (r, c, nr = 1, nc = 1) => range(r, c, nr, nc),
+  };
+}
+
+test('SheetStore : un onglet à 11 colonnes reçoit la colonne Type sans planter', () => {
+  const g = loadAllGs();
+  const header = ['ID', 'Personne', 'Date', 'Début', 'Fin', 'Heures', 'Note', 'Source', 'Saisi le', 'Corrigé', 'Modifié le'];
+  const fluffy = fakeSheet('Fluffy', header, 11);
+  fluffy.cells.push(['old', 'Amohs', new Date('2026-09-30'), '', '', 4, '', 'report', '', '', '']);
+  const ss = { getSheets: () => [fluffy], getSheetByName: (n) => (n === 'Fluffy' ? fluffy : null) };
+  g.SpreadsheetApp = { CopyPasteType: { PASTE_FORMAT: 'format' } };
+  const store = new g.SheetStore(ss);
+  assert.equal(store.allRows()[0].type, '');
+  store.insert('Fluffy', { id: 'n1', person: 'Amohs', date: new Date(), start: '', end: '', hours: 2, note: '',
+    type: 'Dev', source: 'app', created: new Date(), corrected: '', touched: new Date() });
+  assert.equal(fluffy.getMaxColumns(), 12);
+  assert.equal(fluffy.cells[0][11], 'Type');
+  assert.equal(fluffy.cells[2][11], 'Dev');
+});
