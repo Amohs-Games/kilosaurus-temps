@@ -1,7 +1,7 @@
 // Service worker : l'app s'ouvre même sans réseau. Les fichiers de l'app sont servis depuis le
 // cache puis mis à jour en arrière-plan (la nouvelle version s'affiche à l'ouverture suivante).
 // Les appels à l'API (autre domaine) ne passent jamais par le cache.
-var CACHE = 'kt-v3';
+var CACHE = 'kt-v4';
 var SHELL = [
   './', 'index.html', 'style.css', 'config.js', 'logic.js', 'app.js', 'manifest.json',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',

@@ -20,8 +20,8 @@ Succès :
 
 ### Les types
 
-Liste fixe, dans cet ordre : **Misc**, **Art**, **Dev**, **Writing**. Misc est le type par
-défaut. Les types ne se modifient pas depuis l'app.
+Liste fixe, dans cet ordre : **Misc**, **Art**, **Dev**, **Writing**, **UI**, **Gameplay**,
+**Sound**, **Market**. Misc est le type par défaut. Les types ne se modifient pas depuis l'app.
 
 | Type | Couleur |
 |---|---|
@@ -29,6 +29,10 @@ défaut. Les types ne se modifient pas depuis l'app.
 | Art | `#EC4899` (rose) |
 | Dev | `#3B82F6` (bleu) |
 | Writing | `#22C55E` (vert) |
+| UI | `#06B6D4` (cyan) |
+| Gameplay | `#F97316` (orange) |
+| Sound | `#CA8A04` (ambre) |
+| Market | `#64748B` (gris-bleu) |
 
 Les mêmes couleurs servent aux boutons de l'app, au widget, à la frise et aux récaps.
 
@@ -90,25 +94,39 @@ du récap.
 
 ### Écran principal
 
+L'écran se lit de haut en bas dans l'ordre de l'usage : ce qui tourne, choisir un type, lancer un
+projet, voir sa journée, ajouter du temps après coup, corriger la dernière entrée.
+
 ```
-● Amohs                         ⚙
-        HEIRFALL · Dev
-          2:14:07      [ STOP ]
- [Misc] [Art] [Dev] [Writing]       type
- [  Fluffy  ]  [  Heirfall  ]        projets
- Aujourd'hui : 5 h 42
- ▕██▓▓▓░░██████▓▓▏                   frise du jour
- Récap : Semaine · Mois
- Déclarer 2…12 h · Autre jour…
- Dernier : Heirfall · Dev  09:12 → 12:40 · 3 h 28
+● Amohs                                   ⚙
+ ┌ Maintenant ─────────────────────────┐
+ │        HEIRFALL · DEV                │   au repos : « Rien en cours —
+ │          2:14:07                     │   choisis un type, puis lance
+ │        [   STOP   ]                  │   un projet. »
+ └──────────────────────────────────────┘
+ TYPE
+ [Misc] [Art] [Dev] [Writing]
+ [UI] [Gameplay] [Sound] [Market]
+ LANCER
+ [ ▶ Fluffy ]  [ ● Heirfall  en cours ]    couleur du type choisi
+ ┌ Aujourd'hui  5 h 42          Récap ┐
+ │ ▕██▓▓▓░░██████▓▓▏                   │
+ └──────────────────────────────────────┘
+ AJOUTER DES HEURES
+ [2] [4] [6] [8] [10] [12]  · Autre jour…
+ ┌ Dernière entrée · Heirfall · Dev ───┐
+ │ 09:12 → 12:40 · 3 h 28              │
+ └──────────────────────────────────────┘
 ```
 
-- **Sélecteur de type** : quatre boutons aux couleurs des types, le type choisi est plein, les
-  autres atténués. Compteur en cours : un tap bascule le type (requête `start` sur le projet en
-  cours). Compteur arrêté : un tap choisit le type du prochain lancement. Le type choisi est gardé
-  sur l'appareil.
-- **Projets** : un tap lance le projet avec le type choisi (bascule si un autre tourne). Les
-  projets sont les onglets de la Sheet (Fluffy, Heirfall…) ; un nouveau se crée par ⚙ → + Projet.
+- **Sélecteur de type** : un bouton par type (quatre par rangée), aux couleurs des types ; le type
+  choisi est plein, les autres atténués. Compteur en cours : un tap bascule le type (requête
+  `start` sur le projet en cours). Compteur arrêté : un tap choisit le type du prochain lancement.
+  Le type choisi est gardé sur l'appareil.
+- **Projets** (section « Lancer ») : ce sont les boutons qui démarrent le compteur. Chacun porte ▶
+  et prend la couleur du type choisi ; le projet en cours est plein, marqué « ● en cours ». Un tap
+  lance le projet avec le type choisi (bascule si un autre tourne). Les projets sont les onglets de
+  la Sheet (Fluffy, Heirfall…) ; un nouveau se crée par ⚙ → + Projet.
 - **Studio** : plus de bouton spécial. L'onglet nommé dans `_Config` (« Onglet studio ») n'apparaît
   parmi les projets que si le réglage **⚙ → Afficher Studio** est coché. Réglage gardé sur
   l'appareil, décoché par défaut. Masqué ou non, son historique compte dans les totaux et récaps.

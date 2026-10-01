@@ -134,7 +134,7 @@ test('frise : de 8 h (ou plus tôt) à maintenant, segments découpés à minuit
 test('ancien état en cache (v1.0) : rien ne casse', () => {
   const old = base();
   assert.equal(L.todayTotal(old.today, Date.now()), 0);
-  assert.deepEqual(L.typesOf(old).map((t) => t.name), ['Misc', 'Art', 'Dev', 'Writing']);
+  assert.deepEqual(L.typesOf(old).map((t) => t.name), ['Misc', 'Art', 'Dev', 'Writing', 'UI', 'Gameplay', 'Sound', 'Market']);
   assert.equal(L.typeOf({ project: 'Fluffy' }), 'Misc');
   const s = L.applyLocal(old, { action: 'start', params: { id: 'a', project: 'Fluffy' }, clientTime: '2026-10-01T09:00:00+02:00' });
   assert.equal(s.running.type, 'Misc');

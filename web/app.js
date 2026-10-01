@@ -11,7 +11,7 @@
 
   var L = window.KTLogic;
   var API = window.KT_API_URL;
-  var VERSION = '1.2.0';
+  var VERSION = '1.3.0';
   var TIMEOUT_MS = 25000; // Apps Script répond parfois en 30 s ; l'écran, lui, a déjà réagi.
   var RETRY_MS = 30000;
   var BUSY_RETRY_MS = 5000;
@@ -249,7 +249,12 @@
         (state.sync === 'ok' ? 'Connexion…' : esc(state.syncMsg) + '<br>Nouvel essai dans un instant…') + '</p>';
       return;
     }
-    app.innerHTML = header(s) + hero(s) + typeBar(s) + grid(s) + todayView(s) + blocks() + lastView(s);
+    // Haut en bas = ordre d'usage : ce qui tourne, choisir un type, lancer, la journée, après coup.
+    app.innerHTML = header(s) + hero(s) +
+      section('Tâche', typeBar(s)) +
+      todayView(s) +
+      section('Ajouter un bloc d’heures', blocks()) +
+      lastView(s);
     tick();
   }
 
@@ -278,14 +283,27 @@
       '</header>';
   }
 
+  function section(title, body) {
+    return '<section class="block"><h2 class="block-title">' + esc(title) + '</h2>' + body + '</section>';
+  }
+
+  // La carte compteur : toujours là, avec les projets qui le lancent. Au repos, 0:00:00 en grisé dit
+  // clairement que rien ne tourne.
   function hero(s) {
     var r = s.running;
-    if (!r) return '<section class="hero idle">Rien en cours</section>';
+    if (!r) {
+      return '<section class="hero idle">' +
+        '<div class="hero-project">Rien en cours</div>' +
+        '<div class="hero-time">0:00:00</div>' +
+        grid(s) +
+        '</section>';
+    }
     var t = L.typeOf(r);
     return '<section class="hero" style="--c:' + L.typeColor(s, t) + '">' +
       '<div class="hero-project">' + esc(r.project) + ' · ' + esc(t) + '</div>' +
       '<div class="hero-time" id="elapsed">' + L.elapsed(Date.now() - new Date(r.start).getTime()) + '</div>' +
       '<button class="stop" data-act="stop">STOP</button>' +
+      grid(s) +
       '<button class="link note-text" data-act="note">' + (r.note ? esc(r.note) : '+ note') + '</button>' +
       '</section>';
   }
@@ -321,9 +339,12 @@
     return html;
   }
 
+  // Les projets sont les boutons qui lancent le compteur : ▶, couleur du type qui sera utilisé.
   function projectButton(s, p) {
     var on = s.running && s.running.project === p;
-    return '<button class="proj' + (on ? ' on' : '') + '" data-act="start" data-p="' + esc(p) + '">' + esc(p) + '</button>';
+    return '<button class="proj play' + (on ? ' on' : '') + '" style="--c:' + L.typeColor(s, currentType()) + '" data-act="start" data-p="' + esc(p) + '">' +
+      '<span class="proj-icon">' + (on ? '●' : '▶') + '</span><span class="proj-name">' + esc(p) + '</span>' +
+      (on ? '<small>en cours</small>' : '') + '</button>';
   }
 
   function grid(s) {
@@ -331,18 +352,18 @@
     var html = vp.shown.map(function (p) { return projectButton(s, p); }).join('');
     if (vp.more.length) {
       var hidden = s.running && vp.more.indexOf(s.running.project) >= 0;
-      html += '<button class="proj more' + (hidden ? ' on' : '') + '" data-act="more">' +
-        (hidden ? esc(s.running.project) : 'Plus…') + '</button>';
+      html += '<button class="proj more' + (hidden ? ' on' : '') + '" style="--c:' + L.typeColor(s, currentType()) + '" data-act="more">' +
+        (hidden ? '● ' + esc(s.running.project) : 'Plus…') + '</button>';
     }
     return '<div class="grid">' + html + '</div>';
   }
 
   function blocks() {
-    return '<div class="row blocks"><span class="label">Déclarer</span>' +
+    return '<div class="row blocks">' +
       L.BLOCK_HOURS.map(function (h) {
-        return '<button class="chip" data-act="block" data-v="' + h + '">' + h + '</button>';
+        return '<button class="chip" data-act="block" data-v="' + h + '">' + h + ' h</button>';
       }).join('') + '</div>' +
-      '<button class="link small" data-act="otherDay">Autre jour…</button>';
+      '<button class="link small" data-act="otherDay">Un autre jour…</button>';
   }
 
   function lastView(s) {
@@ -350,14 +371,15 @@
     if (!l) return '';
     var tags = (l.corrected ? ' <span class="tag">corrigé</span>' : '') + (l.source === 'claude' ? ' <span class="tag">Claude</span>' : '');
     var day = L.dayLabel(l.date, Date.now());
+    var what = '<b>' + esc(l.project) + '</b> · ' + esc(L.typeOf(l));
     if (l.start) {
-      return '<section class="last"><div class="last-title">Dernier · <b>' + esc(l.project) + '</b> · ' + esc(day) + tags + '</div>' +
+      return '<section class="last"><div class="last-title">Dernière entrée · ' + what + ' · ' + esc(day) + tags + '</div>' +
         '<div class="last-times">' +
         '<button class="time" data-act="editStart" aria-label="Corriger le début">' + L.clock(l.start) + '</button> → ' +
         '<button class="time" data-act="editEnd" aria-label="Corriger la fin">' + L.clock(l.end) + '</button>' +
         '<span class="muted">· ' + L.duration(l.hours) + '</span></div></section>';
     }
-    return '<section class="last"><div class="last-title">Dernier · <b>' + esc(l.project) + '</b>' + tags + '</div>' +
+    return '<section class="last"><div class="last-title">Dernière entrée · ' + what + tags + '</div>' +
       '<div class="last-times">' +
       '<button class="time" data-act="editHours" aria-label="Corriger la durée">' + L.duration(l.hours) + '</button>' +
       '<span class="muted">· ' + esc(day) + '</span></div></section>';

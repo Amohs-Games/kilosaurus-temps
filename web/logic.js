@@ -12,6 +12,10 @@
     { name: 'Art', color: '#EC4899' },
     { name: 'Dev', color: '#3B82F6' },
     { name: 'Writing', color: '#22C55E' },
+    { name: 'UI', color: '#06B6D4' },
+    { name: 'Gameplay', color: '#F97316' },
+    { name: 'Sound', color: '#CA8A04' },
+    { name: 'Market', color: '#64748B' },
   ];
   var DEFAULT_TYPE = 'Misc';
   // Noms de la première version, encore possibles dans un état ou un réglage mis en cache.
