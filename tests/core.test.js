@@ -448,3 +448,42 @@ test('type : une ligne sans type (historique) vaut Autre', () => {
   });
   assert.equal(ok(call('code-amohs', 'status')).last.type, 'Autre');
 });
+
+test('status.types et status.today', () => {
+  const { call, clock } = makeEnv({ clock: makeClock('2026-10-01T09:00:00+02:00') });
+  ok(call('code-amohs', 'logBlock', { id: 'y', project: 'Fluffy', hours: 2, date: '2026-09-30' }));
+  ok(call('code-amohs', 'start', { id: 'a', project: 'Fluffy', type: 'Dev' }));
+  clock.advance(60);
+  const s = ok(call('code-amohs', 'start', { id: 'b', project: 'Fluffy', type: 'Art' }));
+  assert.deepEqual(Array.from(s.types, (t) => t.name), ['Autre', 'Dev', 'Art', 'Narration']);
+  assert.deepEqual(s.today.map((r) => r.id), ['a', 'b']);
+  assert.equal(s.today[1].end, null);
+});
+
+test('status.today : une session d\'hier encore en cours en fait partie', () => {
+  const { call, clock } = makeEnv({ clock: makeClock('2026-09-30T22:00:00+02:00') });
+  ok(call('code-amohs', 'start', { id: 'n', project: 'Fluffy' }));
+  clock.set('2026-10-01T01:00:00+02:00');
+  const s = ok(call('code-amohs', 'status'));
+  assert.deepEqual(s.today.map((r) => r.id), ['n']);
+});
+
+test('history : lignes de la période, bornes incluses', () => {
+  const { call } = makeEnv({ clock: makeClock('2026-10-01T09:00:00+02:00') });
+  ok(call('code-amohs', 'logBlock', { id: 'd28', project: 'Fluffy', hours: 2, date: '2026-09-28' }));
+  ok(call('code-amohs', 'logBlock', { id: 'd29', project: 'Fluffy', hours: 4, date: '2026-09-29', type: 'Dev' }));
+  ok(call('code-amohs', 'logBlock', { id: 'd30', project: 'Studio', hours: 6, date: '2026-09-30' }));
+  ok(call('code-alex', 'logBlock', { id: 'x', project: 'Fluffy', hours: 2, date: '2026-09-29' }));
+  const h = ok(call('code-amohs', 'history', { from: '2026-09-29', to: '2026-09-30' }));
+  assert.deepEqual(h.rows.map((r) => r.id), ['d29', 'd30']);
+  assert.equal(h.rows[0].type, 'Dev');
+  assert.equal(h.from, '2026-09-29');
+});
+
+test('history : dates invalides ou plus de 62 jours → invalid', () => {
+  const { call } = makeEnv();
+  fails(call('code-amohs', 'history', { from: '2026-10-01', to: '2026-09-01' }), 'invalid');
+  fails(call('code-amohs', 'history', { from: '2026-01-01', to: '2026-03-15' }), 'invalid');
+  fails(call('code-amohs', 'history', { from: 'hier', to: '2026-10-01' }), 'invalid');
+  ok(call('code-amohs', 'history', { from: '2026-08-01', to: '2026-10-01' }));
+});

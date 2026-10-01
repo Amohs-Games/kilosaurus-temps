@@ -13,6 +13,7 @@ var Core = (function () {
   var BLOCK_HOURS = [2, 4, 6, 8, 10, 12];
   var OFFSETS = [0, 15, 30, 60];
   var MAX_SESSION_MS = 24 * 3600000;
+  var MAX_HISTORY_DAYS = 62;
   var FORBIDDEN_NAME = /[\[\]*?\/\\:]/;
   var DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
   var WRITE_ACTIONS = ['start', 'stop', 'note', 'logBlock', 'logSession', 'editLast', 'addProject'];
@@ -68,6 +69,32 @@ var Core = (function () {
     return done[0] || null;
   }
 
+  // Début du jour suivant, sûr aux changements d'heure (jour de 23 ou 25 h).
+  function nextDayStart(ctx, dayStart) {
+    return ctx.tz.dayStart(ctx.tz.dayKey(new Date(dayStart.getTime() + 36 * 3600000)));
+  }
+
+  function byDateThenStart(a, b) {
+    var da = isDate(a.date) ? a.date.getTime() : 0;
+    var db = isDate(b.date) ? b.date.getTime() : 0;
+    if (da !== db) return da - db;
+    var sa = isDate(a.start) ? a.start.getTime() : Infinity;
+    var sb = isDate(b.start) ? b.start.getTime() : Infinity;
+    return sa === sb ? 0 : (sa < sb ? -1 : 1);
+  }
+
+  // Mes lignes qui touchent aujourd'hui : sessions qui chevauchent la journée (en cours comprises),
+  // blocs datés d'aujourd'hui.
+  function myToday(ctx) {
+    var key = ctx.tz.dayKey(ctx.now);
+    var from = ctx.tz.dayStart(key);
+    var to = nextDayStart(ctx, from);
+    return myRows(ctx).filter(function (r) {
+      if (isDate(r.start)) return r.start < to && (isDate(r.end) ? r.end : ctx.now) > from;
+      return isDate(r.date) && ctx.tz.dayKey(r.date) === key;
+    }).sort(byDateThenStart);
+  }
+
   function findById(ctx, id) {
     var all = ctx.store.allRows();
     for (var i = 0; i < all.length; i++) if (all[i].id === id) return all[i];
@@ -101,6 +128,8 @@ var Core = (function () {
       threshold: cfg.threshold,
       running: toApi(ctx, myRunning(ctx)),
       last: toApi(ctx, myLast(ctx)),
+      types: TYPES,
+      today: myToday(ctx).map(function (r) { return toApi(ctx, r); }),
       now: ctx.now.toISOString(),
     };
   }
@@ -327,6 +356,22 @@ var Core = (function () {
       if (taken) fail('Ce nom est déjà pris : ' + name);
       ctx.store.createProject(name);
     },
+
+    // Lecture seule : renvoie les lignes de la période au lieu de l'état.
+    history: function (ctx, p) {
+      if (typeof p.from !== 'string' || !DAY_KEY.test(p.from) || typeof p.to !== 'string' || !DAY_KEY.test(p.to)) {
+        fail('Période attendue : from et to au format aaaa-mm-jj.');
+      }
+      if (p.from > p.to) fail('La période commence après sa fin.');
+      var days = Math.round((ctx.tz.dayStart(p.to) - ctx.tz.dayStart(p.from)) / 86400000) + 1;
+      if (days > MAX_HISTORY_DAYS) fail('Période de ' + MAX_HISTORY_DAYS + ' jours au plus.');
+      var rows = myRows(ctx).filter(function (r) {
+        if (!isDate(r.date)) return false;
+        var key = ctx.tz.dayKey(r.date);
+        return key >= p.from && key <= p.to;
+      }).sort(byDateThenStart);
+      return { from: p.from, to: p.to, rows: rows.map(function (r) { return toApi(ctx, r); }) };
+    },
   };
 
   // ---- Entrée ----
@@ -355,8 +400,8 @@ var Core = (function () {
         offline: body.offline === true,
         clientTime: body.clientTime,
       };
-      action(ctx, body);
-      return { ok: true, data: status(ctx) };
+      var data = action(ctx, body);
+      return { ok: true, data: data === undefined ? status(ctx) : data };
     } catch (e) {
       if (e instanceof AppError) return { ok: false, error: { code: e.code, message: e.message } };
       return { ok: false, error: { code: 'server', message: String(e && e.message ? e.message : e) } };

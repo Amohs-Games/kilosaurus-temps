@@ -63,6 +63,7 @@ test('blocage : 10 codes refusés bloquent tout le monde, unlockApi débloque', 
   g.PropertiesService = { getScriptProperties: () => ({ getProperties: () => ({ CODE_AMOHS: good }) }) };
   const store = new MemoryStore({ persons: ['Amohs'] });
   g.SheetStore = function () { return store; };
+  g.tzParis = tz; // Utilities (Google) n'existe pas dans Node
   const call = (code) => g.handle({ code, action: 'status' }, null, () => new Date('2026-10-01T10:00:00+02:00'));
 
   for (let i = 0; i < 9; i++) assert.equal(call('faux-' + i).error.code, 'unauthorized');
