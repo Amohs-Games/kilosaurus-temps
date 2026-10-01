@@ -640,19 +640,22 @@
 
   function loadRecap() {
     var range = recapRange();
-    var asked = state.recap;
-    asked.data = null;
-    asked.error = '';
+    var rc = state.recap;
+    rc.data = null;
+    rc.error = '';
     renderRecap();
+    // Seule la réponse qui correspond à la période encore affichée compte : une réponse plus
+    // ancienne, arrivée en retard après un changement de vue, est ignorée.
+    var current = function () { return state.recap === rc && recapRange().from === range.from && recapRange().to === range.to; };
     post({ code: state.code, action: 'history', from: range.from, to: range.to }).then(function (res) {
-      if (state.recap !== asked) return;
-      if (res.ok) asked.data = res.data;
-      else asked.error = res.error.message;
+      if (!current()) return;
+      if (res.ok && L.recapMatches(range, res.data)) rc.data = res.data;
+      else rc.error = res.ok ? 'Réponse inattendue du serveur.' : res.error.message;
       renderRecap();
     }).catch(function (err) {
       rethrowIfBug(err);
-      if (state.recap !== asked) return;
-      asked.error = 'Récap indisponible : ' + failureMessage(err);
+      if (!current()) return;
+      rc.error = 'Récap indisponible : ' + failureMessage(err);
       renderRecap();
     });
   }

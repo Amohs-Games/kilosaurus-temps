@@ -227,6 +227,12 @@
     return rangeOf(first, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate());
   }
 
+  // Une réponse `history` ne vaut que pour la période qu'elle couvre : les réponses peuvent
+  // arriver dans le désordre quand on change vite de vue (Apps Script répond en 1 à 30 s).
+  function recapMatches(range, data) {
+    return !!data && data.from === range.from && data.to === range.to;
+  }
+
   // Récap : une session compte pour son jour de début (colonne Date) ; en cours, jusqu'à maintenant.
   function aggregate(rows, days, nowMs) {
     var out = { total: 0, byDay: {}, byType: {}, byProject: {} };
@@ -251,7 +257,7 @@
     editedInstant: editedInstant, visibleProjects: visibleProjects, pickableProjects: pickableProjects,
     isForgotten: isForgotten, applyLocal: applyLocal,
     typesOf: typesOf, typeOf: typeOf, typeColor: typeColor, rowHours: rowHours, todayTotal: todayTotal,
-    dayTimeline: dayTimeline, weekRange: weekRange, monthRange: monthRange, aggregate: aggregate,
+    dayTimeline: dayTimeline, weekRange: weekRange, monthRange: monthRange, aggregate: aggregate, recapMatches: recapMatches,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.KTLogic = api;

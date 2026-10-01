@@ -166,3 +166,11 @@ test('agrégats : par jour, par type, par projet', () => {
   assert.equal(g.byDay['2026-09-30'].total, 3);
   assert.deepEqual(g.byDay['2026-09-30'].byType, { Art: 1, Autre: 2 });
 });
+
+test('récap : une réponse ne vaut que pour la période affichée', () => {
+  const week = L.weekRange(new Date('2026-10-01T12:00:00+02:00'));
+  const month = L.monthRange(new Date('2026-10-01T12:00:00+02:00'));
+  assert.equal(L.recapMatches(month, { from: month.from, to: month.to, rows: [] }), true);
+  assert.equal(L.recapMatches(month, { from: week.from, to: week.to, rows: [] }), false);
+  assert.equal(L.recapMatches(month, null), false);
+});
