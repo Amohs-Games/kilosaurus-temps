@@ -46,8 +46,10 @@ sont identiques à celles de l'ancien fichier, et s'arrête sinon.
 
 La Sheet contient :
 
-- **Les onglets de projet** (`Fluffy`, `Studio`…). Chaque onglet sans `_` au début est un projet.
-  L'ordre des onglets donne l'ordre des boutons dans l'app.
+- **Les onglets de projet** (`Fluffy`, `Heirfall`, `Studio`…). Chaque onglet sans `_` au début est
+  un projet. L'ordre des onglets donne l'ordre des boutons dans l'app. La colonne **L — Type**
+  (Autre, Dev, Art, Narration) est ajoutée par le script à la première écriture ; une cellule vide
+  vaut Autre.
 - **`_Config`** : la liste des personnes, le seuil d'oubli (8 h), le nom de l'onglet studio, le
   nombre de boutons visibles.
 - **`_Corrections`** : la trace de chaque correction d'heure.
@@ -154,10 +156,19 @@ du temps continue d'arriver dans l'ancien fichier, que plus rien ne lit.
 
 ## Utilisation
 
-- **Lancer** : un tap sur un projet. Si un autre compteur tourne, il se ferme et le nouveau démarre.
+- **Type de travail** (Autre, Dev, Art, Narration) : la rangée de boutons colorés. Compteur en
+  cours, un tap bascule le type sans trou : le temps d'avant reste sous l'ancien type. Compteur
+  arrêté, un tap choisit le type du prochain lancement.
+- **Lancer** : un tap sur un projet, avec le type choisi. Si un autre compteur tourne, il se ferme
+  et le nouveau démarre.
 - **Stop** : ferme le compteur. **+ note** : une note sur le compteur en cours.
-- **Déclarer 2 à 12** : un bloc d'heures pour aujourd'hui, sans début ni fin. **Autre jour…** :
-  un bloc pour une date passée.
+- **Aujourd'hui** : le total du jour, pauses exclues, compteur en cours compris, et la frise de la
+  journée colorée par type. Une session commencée la veille ne compte que pour sa partie
+  d'aujourd'hui. Les blocs déclarés comptent dans le total mais n'ont pas de place sur la frise.
+- **Récap** : semaine (barres par jour, empilées par type) et mois (par type et par projet), avec
+  flèches pour remonter le temps. Demande le réseau.
+- **Déclarer 2 à 12** : un bloc d'heures pour aujourd'hui, sans début ni fin, avec le type choisi.
+  **Autre jour…** : un bloc pour une date passée.
 - **Dernier log** : un tap sur une heure ou une durée permet de la corriger. On ne corrige que son
   propre dernier log, et chaque correction est tracée dans `_Corrections`.
 - **Oubli** : si un compteur tourne depuis plus de 8 h à l'ouverture, l'app demande l'heure de fin
@@ -166,17 +177,19 @@ du temps continue d'arriver dans l'ancien fichier, que plus rien ne lit.
   erreur. Un tap affiche le détail.
 - **Hors ligne** : l'app réagit normalement. Les actions sont gardées sur l'appareil et envoyées
   au retour du réseau, avec l'heure du tap. Ces lignes sont marquées « hors ligne » dans la Sheet.
-- **Menu (roue dentée)** : nouveau projet, changer de code.
+- **Menu (roue dentée)** : nouveau projet, **Afficher Studio** (le projet Studio est masqué par
+  défaut ; réglage propre à chaque appareil ; masqué, son historique compte quand même dans les
+  récaps), changer de code.
 - **« Accès bloqué »** : après 10 codes refusés, l'API refuse tout le monde pendant une heure, vous
   compris. Vos données ne risquent rien, et l'app garde vos actions pour les envoyer au déblocage.
   Si vous n'avez pas tapé de mauvais code vous-même, quelqu'un essaie de deviner un code : changez
   vos codes. Pour débloquer sans attendre : dans l'éditeur Apps Script, exécutez **`unlockApi`**.
 
-## L'app Android (APK) et son widget Start / Stop
+## L'app Android (APK) et son widget
 
 L'APK contient **l'app complète** (les mêmes écrans que la version web, embarqués dans le
-téléphone) et un **widget** pour l'écran d'accueil : le nom d'un projet, un chrono et un gros
-bouton Start / Stop. Il parle directement à l'API : aucun hébergement web n'est nécessaire.
+téléphone) et un **widget** pour l'écran d'accueil : le nom d'un projet, un chrono et quatre
+boutons de type. Il parle directement à l'API : aucun hébergement web n'est nécessaire.
 
 ### Fabriquer l'APK
 
@@ -206,14 +219,16 @@ L'adresse de l'API est celle de `web/config.js` (pour l'app) et de `Api.DEFAULT_
 
 ### Poser le widget
 
-1. Appui long sur l'écran d'accueil → **Widgets** → **Kilosaurus Temps** → **Start / Stop**.
+1. Appui long sur l'écran d'accueil → **Widgets** → **Kilosaurus Temps** → **Types de travail**
+   (4 × 2 cases). Après une mise à jour qui change sa taille, retirez l'ancien widget et reposez-le.
 2. Le réglage s'ouvre : code perso (déjà rempli si vous vous êtes connecté dans l'app), puis
    **Charger mes projets**, choix du projet, **Enregistrer**.
 
 Utilisation :
 
-- **START** lance le compteur sur le projet du widget. **STOP** arrête le compteur en cours,
-  quel que soit son projet.
+- **Un tap sur un type** (Autre, Dev, Art, Narr.) : compteur arrêté, il lance le projet du widget
+  avec ce type ; un autre type tourne, il bascule le compteur en cours vers ce type (même projet) ;
+  ce type tourne déjà, il met en pause. Le type en cours est en couleur pleine.
 - **Toucher le nom du projet** rouvre le réglage (changer de projet ou de code).
 - **Sans réseau**, rien n'est enregistré, et le widget le dit. Toucher le message relit l'état.
 - Un compteur lancé depuis l'app apparaît tout de suite sur le widget. Lancé depuis un autre
@@ -224,7 +239,7 @@ Utilisation :
 ## Ajouter un projet
 
 Depuis l'app : **menu → + Nouveau projet**. Ou dans la Sheet : dupliquez `_Modèle` et renommez la
-copie. Placez l'onglet où vous voulez : les 4 premiers projets (hors Studio) ont un bouton direct,
+copie. Placez l'onglet où vous voulez : les 4 premiers projets (hors Studio s'il est masqué) ont un bouton direct,
 les suivants passent dans « Plus… ». Le nombre de boutons directs se règle dans `_Config`.
 
 ## Loguer depuis un agent Claude Code

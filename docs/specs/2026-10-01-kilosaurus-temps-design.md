@@ -1,5 +1,9 @@
 # Kilosaurus Temps — spécification v1
 
+> Les types de travail, le total du jour, la frise, les récaps, le réglage Studio et le widget à
+> quatre boutons sont décrits dans `2026-10-01-types-de-travail-design.md`, qui l'emporte en cas de
+> divergence.
+
 Outil de suivi du temps de travail par projet, pour une seule personne (Amohs). Le modèle de
 données reste multi-personne (colonne Personne, liste dans `_Config`). Une Google Sheet stocke les données, un Apps Script lié à la Sheet sert d'API JSON, une PWA
 statique (GitHub Pages) sert d'interface sur téléphone et PC. Un agent Claude Code peut aussi
@@ -43,6 +47,7 @@ Colonnes, identiques dans tous les onglets de projet :
 | I | Saisi le | Horodatage serveur de la création de la ligne |
 | J | Corrigé | `oui` si la ligne a été corrigée, sinon vide |
 | K | Modifié le | Horodatage serveur de la dernière écriture sur la ligne (création, arrêt, correction) |
+| L | Type | Autre, Dev, Art ou Narration ; vide = Autre (voir la spec des types de travail) |
 
 Trois sortes de lignes :
 
@@ -208,7 +213,8 @@ clair / sombre selon le système. Mobile d'abord, gros éléments tactiles.
 - **Boutons projets** : 2 colonnes, ordre des onglets. Les `Boutons visibles` premiers projets
   (hors Studio) sont affichés, les autres dans « Plus… ». Un tap lance le compteur tout de suite ;
   si un autre tourne, bascule. Pas de bouton Pause.
-- **Studio** : bouton pleine largeur, couleur distincte, toujours au même endroit.
+- **Studio** : remplacé par le réglage « Afficher Studio » et les types de travail (voir la spec
+  des types de travail).
 - **Déclarer 2 / 4 / 6 / 8 / 10 / 12** : un tap ouvre un panneau listant les projets (Studio
   compris) ; un tap sur un projet enregistre le bloc pour aujourd'hui.
 - **Autre jour…** : ouvre une fenêtre à part pour saisir après coup — date (pas dans le futur),
@@ -259,9 +265,9 @@ hébergement web.
 - **L'app** : l'interface web du dossier `web/`, embarquée dans l'APK et affichée dans une
   WebView. Les fichiers sont servis sous une adresse https interne, pour que la page ait une
   origine normale (appels à l'API, stockage local). Mêmes écrans, mêmes règles que la PWA.
-- **Le widget** : nom du projet, chrono (géré par Android, sans réveiller l'app) et un bouton.
-  - Un tap envoie **une seule** requête : `stop` si un compteur tourne (quel que soit son projet),
-    sinon `start` sur le projet du widget. La décision repose sur le dernier état connu ; si le
+- **Le widget** : nom du projet, chrono (géré par Android, sans réveiller l'app) et quatre boutons
+  de type (comportement : spec des types de travail, §4).
+  - Un tap envoie **une seule** requête. La décision repose sur le dernier état connu ; si le
     serveur a changé entre-temps, sa réponse remet le widget à jour.
   - Réglage par widget : le projet. Réglage par téléphone : code perso et adresse de l'API.
   - **Pas de file hors ligne** : sans réseau, rien n'est enregistré et le widget l'affiche.

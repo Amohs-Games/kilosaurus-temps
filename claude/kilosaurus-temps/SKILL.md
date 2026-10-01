@@ -35,7 +35,8 @@ corrige, ou explique-le à l'utilisateur. `busy` = réessaie dans quelques secon
 l'API est bloquée après trop de codes refusés : n'insiste pas, préviens l'utilisateur.
 
 Chaque action renvoie l'état à jour (`data`) : `projects` (projets existants), `running` (compteur
-en cours), `last` (dernier log).
+en cours), `last` (dernier log), `today` (lignes du jour), `types` (types de travail). Seule
+exception : `history` renvoie `{ from, to, rows }`.
 
 ## Commence par `status`
 
@@ -47,11 +48,16 @@ réunions…). Si le projet demandé n'existe pas, demande à l'utilisateur plut
 
 | Action | Paramètres | Usage |
 |---|---|---|
-| `logSession` | `id`, `project`, `start`, `end`, `note?` | Une session terminée, avec ses heures exactes. **L'action normale pour un agent.** |
-| `logBlock` | `id`, `project`, `hours` (2, 4, 6, 8, 10 ou 12), `date?` (`aaaa-mm-jj`), `note?` | Un bloc d'heures sur une journée, sans heures précises. |
-| `start` | `id`, `project`, `note?` | Lance le compteur (ferme celui en cours). |
+| `logSession` | `id`, `project`, `start`, `end`, `type?`, `note?` | Une session terminée, avec ses heures exactes. **L'action normale pour un agent.** |
+| `logBlock` | `id`, `project`, `hours` (2, 4, 6, 8, 10 ou 12), `date?` (`aaaa-mm-jj`), `type?`, `note?` | Un bloc d'heures sur une journée, sans heures précises. |
+| `start` | `id`, `project`, `type?`, `note?` | Lance le compteur (ferme celui en cours). Sans `type`, garde celui du compteur en cours. |
 | `stop` | — | Arrête le compteur. |
 | `editLast` | `id`, `field` (`start`, `end` ou `hours`), `value` | Corrige le dernier log (et seulement lui). |
+| `history` | `from`, `to` (`aaaa-mm-jj`, 62 jours max) | Les lignes de l'utilisateur sur la période, pour faire un bilan. Ne modifie rien. |
+
+`type` : `Autre` (défaut), `Dev`, `Art` ou `Narration` (liste dans `data.types`). Choisis-le d'après
+la demande (« j'ai codé » → Dev, « j'ai dessiné » → Art, « j'ai écrit les dialogues » →
+Narration) ; dans le doute, demande.
 
 Règles :
 
