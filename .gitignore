@@ -1,0 +1,16 @@
+# Données réelles (heures, emails) : jamais dans le dépôt, qui est public pour GitHub Pages.
+*.xlsx
+~$*
+
+node_modules/
+__pycache__/
+
+# Lien local vers le script Apps Script déployé (clasp).
+.clasp.json
+
+# Android : sorties de build et clé de signature (à sauvegarder ailleurs, jamais publiée).
+android/build/
+android/release.keystore
+android/keystore.properties
+
+*.apk

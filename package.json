@@ -1,0 +1,9 @@
+{
+  "name": "kilosaurus-temps",
+  "private": true,
+  "description": "Outils de dev : tests et faux serveur local. L'app elle-même n'a aucune dépendance.",
+  "scripts": {
+    "test": "node --test \"tests/*.test.js\"",
+    "dev": "node tools/fake-api.js"
+  }
+}
