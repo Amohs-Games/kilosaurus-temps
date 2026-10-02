@@ -68,7 +68,8 @@ final class Prefs {
 
     /** Lance le compteur affiché, sans attendre le serveur. */
     void startLocal(String project, String type, long at) {
-        sp.edit().putString("runningProject", project).putString("runningType", type).putLong("runningStart", at).apply();
+        sp.edit().putString("runningProject", project).putString("runningType", type).putLong("runningStart", at)
+            .putLong("localChangeAt", at).apply();
     }
 
     /** Arrête le compteur affiché, sans attendre le serveur ; sa part d'aujourd'hui rejoint le total du jour. */
@@ -76,7 +77,7 @@ final class Prefs {
         long from = Math.max(runningStart(), startOfToday());
         long done = todayDoneMs() + Math.max(0, at - from);
         sp.edit().remove("runningProject").remove("runningType").remove("runningStart")
-            .putString("todayKey", todayKey()).putLong("todayDoneMs", done).apply();
+            .putString("todayKey", todayKey()).putLong("todayDoneMs", done).putLong("localChangeAt", at).apply();
     }
 
     // ---- Total du jour ----
@@ -110,7 +111,7 @@ final class Prefs {
      */
     void saveStatus(JSONObject data) {
         SharedPreferences.Editor e = sp.edit().putString("me", data.optString("me", ""));
-        if (queue().length() > 0) { e.apply(); return; }
+        if (queue().length() > 0 || olderThanLocalChange(data)) { e.apply(); return; }
         JSONObject running = data.optJSONObject("running");
         if (running != null) {
             e.putString("runningProject", running.optString("project", ""));
@@ -122,6 +123,21 @@ final class Prefs {
         JSONArray today = data.optJSONArray("today");
         if (today != null) e.putString("todayKey", todayKey()).putLong("todayDoneMs", doneMs(today));
         e.apply();
+    }
+
+    /**
+     * Un état calculé par le serveur avant le dernier tap du widget est périmé : une relecture partie
+     * avant un stop, revenue après, rallumerait sinon le compteur (« il se relance tout seul »).
+     * L'heure du serveur (`now`) fait foi ; un état sans heure est accepté.
+     */
+    private boolean olderThanLocalChange(JSONObject data) {
+        String now = data.optString("now", "");
+        if (now.isEmpty()) return false;
+        try {
+            return Instant.parse(now).toEpochMilli() < sp.getLong("localChangeAt", 0);
+        } catch (RuntimeException ex) {
+            return false;
+        }
     }
 
     private static long doneMs(JSONArray today) {

@@ -134,7 +134,7 @@ test('frise : de 8 h (ou plus tôt) à maintenant, segments découpés à minuit
 test('ancien état en cache (v1.0) : rien ne casse', () => {
   const old = base();
   assert.equal(L.todayTotal(old.today, Date.now()), 0);
-  assert.deepEqual(L.typesOf(old).map((t) => t.name), ['Misc', 'Art', 'Dev', 'Writing', 'UI', 'Gameplay', 'Sound', 'Market']);
+  assert.deepEqual(L.typesOf(old).map((t) => t.name), ['Misc', 'Art', 'Dev', 'Writing', 'UI', 'Gameplay', 'Sound', 'Market', 'Debug', 'TechArt', 'Concept', 'Tooling']);
   assert.equal(L.typeOf({ project: 'Fluffy' }), 'Misc');
   const s = L.applyLocal(old, { action: 'start', params: { id: 'a', project: 'Fluffy' }, clientTime: '2026-10-01T09:00:00+02:00' });
   assert.equal(s.running.type, 'Misc');
@@ -187,4 +187,10 @@ test('texte lisible sur une couleur de tâche : sombre sur clair, blanc sur fonc
   assert.equal(L.textOn('#EAB308'), '#17171b');
   assert.equal(L.textOn('#18181B'), '#ffffff');
   assert.equal(L.textOn('#3B82F6'), '#ffffff');
+});
+
+test('couleur des boutons de projet : Fluffy en bleu, les autres en vert', () => {
+  assert.equal(L.projectColor('Fluffy'), L.projectColor('fluffy'));
+  assert.notEqual(L.projectColor('Fluffy'), L.projectColor('Heirfall'));
+  assert.equal(L.projectColor('Heirfall'), L.projectColor('Proto'));
 });

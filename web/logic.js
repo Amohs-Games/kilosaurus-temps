@@ -16,6 +16,10 @@
     { name: 'Gameplay', color: '#F97316' },
     { name: 'Sound', color: '#18181B' },
     { name: 'Market', color: '#8B5CF6' },
+    { name: 'Debug', color: '#EF4444' },
+    { name: 'TechArt', color: '#14B8A6' },
+    { name: 'Concept', color: '#E5E7EB' },
+    { name: 'Tooling', color: '#92400E' },
   ];
   var DEFAULT_TYPE = 'Misc';
   // Noms de la première version, encore possibles dans un état ou un réglage mis en cache.
@@ -31,6 +35,13 @@
   function typeColor(s, name) {
     var t = typesOf(s).filter(function (x) { return x.name === name; })[0];
     return t ? t.color : DEFAULT_TYPES[0].color;
+  }
+
+  // Couleur des boutons de projet (lancer) : vert par défaut, quelques projets ont la leur.
+  var PROJECT_COLORS = { fluffy: '#4a7fc1' };
+  var DEFAULT_PROJECT_COLOR = '#4e9f6d';
+  function projectColor(name) {
+    return PROJECT_COLORS[String(name).toLowerCase()] || DEFAULT_PROJECT_COLOR;
   }
 
   // Couleur du texte posé sur une couleur de tâche : sombre sur une couleur claire (jaune…), blanc sinon.
@@ -270,7 +281,7 @@
     elapsed: elapsed, duration: duration, clock: clock, dayLabel: dayLabel,
     editedInstant: editedInstant, visibleProjects: visibleProjects, pickableProjects: pickableProjects,
     isForgotten: isForgotten, applyLocal: applyLocal,
-    typesOf: typesOf, typeOf: typeOf, typeColor: typeColor, textOn: textOn, rowHours: rowHours, todayTotal: todayTotal,
+    typesOf: typesOf, typeOf: typeOf, typeColor: typeColor, textOn: textOn, projectColor: projectColor, rowHours: rowHours, todayTotal: todayTotal,
     dayTimeline: dayTimeline, weekRange: weekRange, monthRange: monthRange, aggregate: aggregate, recapMatches: recapMatches,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

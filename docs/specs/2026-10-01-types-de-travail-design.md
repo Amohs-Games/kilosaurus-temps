@@ -21,7 +21,7 @@ Succès :
 ### Les types
 
 Liste fixe, dans cet ordre : **Misc**, **Art**, **Dev**, **Writing**, **UI**, **Gameplay**,
-**Sound**, **Market**. Misc est le type par défaut. Les types ne se modifient pas depuis l'app.
+**Sound**, **Market**, **Debug**, **TechArt**, **Concept**, **Tooling**. Misc est le type par défaut. Les types ne se modifient pas depuis l'app.
 
 | Type | Couleur |
 |---|---|
@@ -33,6 +33,10 @@ Liste fixe, dans cet ordre : **Misc**, **Art**, **Dev**, **Writing**, **UI**, **
 | Gameplay | `#F97316` (orange) |
 | Sound | `#18181B` (noir) |
 | Market | `#8B5CF6` (violet) |
+| Debug | `#EF4444` (rouge) |
+| TechArt | `#14B8A6` (sarcelle) |
+| Concept | `#E5E7EB` (blanc cassé) |
+| Tooling | `#92400E` (brun) |
 
 Les mêmes couleurs servent aux boutons de l'app, au widget, à la frise et aux récaps.
 
@@ -121,7 +125,7 @@ la tâche, ajouter du temps après coup, la journée et le récap.
   bascule le type (requête `start` sur le projet en cours). Compteur arrêté : un tap choisit le type
   du prochain lancement. Le type choisi est gardé sur l'appareil.
 - **Projets** : dans la carte du compteur, ce sont les boutons qui le démarrent. Chacun porte ▶ et
-  est vert (« lancer ») ; le projet en cours est cerclé et marqué « ● en cours ». Un tap lance le
+  est vert (« lancer »), sauf Fluffy en bleu ; le projet en cours est cerclé et marqué « ● en cours ». Un tap lance le
   projet avec le type choisi (bascule si un autre tourne). Les projets sont les onglets de la Sheet
   (Fluffy, Heirfall…) ; un nouveau se crée par ⚙ → + Projet.
 - **Pas de « dernière entrée »** : l'app ne corrige plus les heures ; une correction se fait dans la

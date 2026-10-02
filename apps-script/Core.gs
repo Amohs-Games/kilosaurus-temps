@@ -27,6 +27,10 @@ var Core = (function () {
     { name: 'Gameplay', color: '#F97316' },
     { name: 'Sound', color: '#18181B' },
     { name: 'Market', color: '#8B5CF6' },
+    { name: 'Debug', color: '#EF4444' },
+    { name: 'TechArt', color: '#14B8A6' },
+    { name: 'Concept', color: '#E5E7EB' },
+    { name: 'Tooling', color: '#92400E' },
   ];
   var TYPE_NAMES = TYPES.map(function (t) { return t.name; });
   var DEFAULT_TYPE = 'Misc';

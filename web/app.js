@@ -11,7 +11,7 @@
 
   var L = window.KTLogic;
   var API = window.KT_API_URL;
-  var VERSION = '1.5.0';
+  var VERSION = '1.6.0';
   var TIMEOUT_MS = 25000; // Apps Script répond parfois en 30 s ; l'écran, lui, a déjà réagi.
   var RETRY_MS = 30000;
   var BUSY_RETRY_MS = 5000;
@@ -361,7 +361,7 @@
   // Les projets sont les boutons qui lancent le compteur : ▶, vert « lancer ».
   function projectButton(s, p) {
     var on = s.running && s.running.project === p;
-    return '<button class="proj play' + (on ? ' on' : '') + '" data-act="start" data-p="' + esc(p) + '">' +
+    return '<button class="proj play' + (on ? ' on' : '') + '" style="--go:' + L.projectColor(p) + '" data-act="start" data-p="' + esc(p) + '">' +
       '<span class="proj-icon">' + (on ? '●' : '▶') + '</span><span class="proj-name">' + esc(p) + '</span>' +
       (on ? '<small>en cours</small>' : '') + '</button>';
   }
