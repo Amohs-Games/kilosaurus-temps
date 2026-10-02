@@ -281,3 +281,36 @@ html.mini .type { min-height: 32px; font-size: 12px; border-radius: 9px; }
 html.mini .block-title { font-size: 11px; margin-top: 0; }
 html.mini .block { gap: 5px; }
 html.mini .note-text, html.mini .add, html.mini .today { display: none; }
+
+/* Pause : le compteur continue, marqué pause. Boutons côte à côte sous le chrono. */
+.hero-actions { display: flex; gap: 8px; width: 100%; margin-top: 6px; }
+.hero-actions .stop { margin-top: 0; flex: 2; }
+.hero-actions .stop.small-stop { flex: 1; }
+.pause, .resume {
+  flex: 1;
+  min-height: 60px;
+  border-radius: 14px;
+  font-size: 18px;
+  font-weight: 700;
+  background: color-mix(in srgb, #94a3b8 22%, var(--card));
+  border: 1px solid #94a3b8;
+  color: var(--fg);
+}
+.resume { flex: 2; background: var(--go); border-color: var(--go); color: #fff; }
+.hero.paused .hero-time { color: #94a3b8; }
+.hero.paused { border-style: dashed; border-color: #94a3b8; }
+/* Pauses hachurées sur la frise : du temps compté, mais qu'on distingue du travail. */
+.seg.pause { background-image: repeating-linear-gradient(135deg, rgb(255 255 255 / .45) 0 3px, transparent 3px 7px); }
+.pause-total { font-size: 13px; color: var(--muted); }
+html.mini .pause, html.mini .resume { min-height: 40px; font-size: 14px; }
+html.mini .more-info {
+  -webkit-app-region: no-drag;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}

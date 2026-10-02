@@ -162,6 +162,9 @@ du temps continue d'arriver dans l'ancien fichier, que plus rien ne lit.
 - **Lancer** : un tap sur un projet, avec le type choisi. Si un autre compteur tourne, il se ferme
   et le nouveau démarre.
 - **Stop** : ferme le compteur. **+ note** : une note sur le compteur en cours.
+- **⏸ Pause** : le compteur continue, marqué pause (même projet) ; **▶ Reprendre** revient à la
+  tâche d'avant. Les pauses comptent dans le total du jour (« dont N min de pause »), sont hachurées
+  sur la frise et ont leur ligne dans les récaps.
 - **Aujourd'hui** : le total du jour, pauses exclues, compteur en cours compris, et la frise de la
   journée colorée par type. Une session commencée la veille ne compte que pour sa partie
   d'aujourd'hui. Les blocs déclarés comptent dans le total mais n'ont pas de place sur la frise.
@@ -266,7 +269,8 @@ recharge la page toutes les 10 s. Les lancements et les erreurs sont notés dans
 lancez `node node_modules/electron/install.js`. Le démarrage automatique pointe vers ce dossier :
 si le dépôt est déplacé, relancez `npm start` depuis le nouvel emplacement.
 
-- **Déplacer** : glisser la barre du haut. **⤢** ouvre le site en grand dans le navigateur.
+- **Déplacer** : glisser la barre du haut. **Plus d’infos ↗** ouvre la version complète (journée,
+  récap, blocs) dans Chrome, ou dans le navigateur par défaut si Chrome est absent.
 - **Icône près de l'horloge** (clic droit) : afficher / masquer, **Verrouiller la position**,
   **Toujours au-dessus**, **Lancer au démarrage**, remettre dans le coin, ouvrir en grand,
   recharger, quitter. Un clic gauche affiche ou masque la fenêtre.

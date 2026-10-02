@@ -455,7 +455,7 @@ test('status.types et status.today', () => {
   ok(call('code-amohs', 'start', { id: 'a', project: 'Fluffy', type: 'Dev' }));
   clock.advance(60);
   const s = ok(call('code-amohs', 'start', { id: 'b', project: 'Fluffy', type: 'Art' }));
-  assert.deepEqual(Array.from(s.types, (t) => t.name), ['Misc', 'Writing', 'Sound', 'Market', 'Concept', 'Art', 'TechArt', 'UI', 'Dev', 'Gameplay', 'Tooling', 'Debug']);
+  assert.deepEqual(Array.from(s.types, (t) => t.name), ['Misc', 'Writing', 'Sound', 'Market', 'Concept', 'Art', 'TechArt', 'UI', 'Dev', 'Gameplay', 'Tooling', 'Debug', 'Pause']);
   assert.deepEqual(s.today.map((r) => r.id), ['a', 'b']);
   assert.equal(s.today[1].end, null);
 });
@@ -515,4 +515,17 @@ test('tapTime : l\'heure du tap (widget) fait foi, source app, jamais dans le fu
   assert.equal(r.source, 'app');
   ok(call('code-amohs', 'stop', { tapTime: '2026-10-01T09:30:00+02:00' }));
   assert.equal(rows(store, 'Fluffy')[0].end.toISOString(), new Date('2026-10-01T09:00:00+02:00').toISOString());
+});
+
+test('pause : un morceau de type Pause, le compteur continue, puis reprise sur la tâche', () => {
+  const { call, store, clock } = makeEnv();
+  ok(call('code-amohs', 'start', { id: 'w1', project: 'Fluffy', type: 'Dev' }));
+  clock.advance(60);
+  let s = ok(call('code-amohs', 'start', { id: 'p1', project: 'Fluffy', type: 'Pause' }));
+  assert.equal(s.running.type, 'Pause');
+  assert.equal(s.last.type, 'Dev');
+  clock.advance(15);
+  s = ok(call('code-amohs', 'start', { id: 'w2', project: 'Fluffy', type: 'Dev' }));
+  assert.equal(s.running.type, 'Dev');
+  assert.deepEqual(rows(store, 'Fluffy').map((r) => [r.type, r.hours]), [['Dev', 1], ['Pause', 0.25], ['Dev', '']]);
 });

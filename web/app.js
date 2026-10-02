@@ -11,7 +11,7 @@
 
   var L = window.KTLogic;
   var API = window.KT_API_URL;
-  var VERSION = '1.8.0';
+  var VERSION = '1.9.0';
   var TIMEOUT_MS = 25000; // Apps Script répond parfois en 30 s ; l'écran, lui, a déjà réagi.
   var RETRY_MS = 30000;
   var BUSY_RETRY_MS = 5000;
@@ -53,9 +53,10 @@
   function saveQueue() { save(KEYS.queue, JSON.stringify(state.queue)); }
 
   // Type affiché : celui du compteur en cours, sinon le dernier choisi (utilisé au prochain lancement).
+  // En pause, c'est la tâche d'avant (celle de la reprise) qui reste choisie.
   function currentType() {
     var r = state.status && state.status.running;
-    return r ? L.typeOf(r) : state.type;
+    return r && !L.isPause(r) ? L.typeOf(r) : state.type;
   }
   function setType(t) { state.type = t; save(KEYS.type, t); }
 
@@ -207,7 +208,7 @@
 
   function setStatus(data) {
     state.status = data;
-    if (data && data.running) setType(L.typeOf(data.running));
+    if (data && data.running && !L.isPause(data.running)) setType(L.typeOf(data.running));
     saveStatus();
     render();
     native('onStatus', JSON.stringify(data));
@@ -296,7 +297,8 @@
     return '<header class="top">' +
       '<button class="sync sync-' + state.sync + '" data-act="sync" aria-label="État de la synchro"></button>' +
       '<span class="me">' + esc(s ? s.me : '') + (s && s.agent ? ' <span class="tag">agent</span>' : '') + '</span>' +
-      (MINI ? '<a class="icon" href="./" target="_blank" aria-label="Ouvrir en grand">⤢</a>' : '') +
+      // Mini-fenêtre : la version complète (journée, récap, blocs) s'ouvre dans le navigateur (Chrome).
+      (MINI ? '<a class="more-info" data-act="moreInfo" href="./" target="_blank">Plus d’infos ↗</a>' : '') +
       '<button class="icon" data-act="menu" aria-label="Menu">' + GEAR + '</button>' +
       '</header>';
   }
@@ -316,12 +318,17 @@
         grid(s) +
         '</section>';
     }
+    var paused = L.isPause(r);
     var t = L.typeOf(r);
     var c = L.typeColor(s, t);
-    return '<section class="hero">' +
+    // En pause, le compteur continue (la pause fait partie du travail) : on reprend ou on arrête.
+    var actions = paused
+      ? '<button class="resume" data-act="resume">▶ Reprendre · ' + esc(state.type) + '</button><button class="stop small-stop" data-act="stop">STOP</button>'
+      : '<button class="stop" data-act="stop">STOP</button><button class="pause" data-act="pause">⏸ Pause</button>';
+    return '<section class="hero' + (paused ? ' paused' : '') + '">' +
       '<div class="hero-project">' + esc(r.project) + ' · <span class="pill" style="background:' + c + ';color:' + L.textOn(c) + '">' + esc(t) + '</span></div>' +
       '<div class="hero-time" id="elapsed">' + L.elapsed(Date.now() - new Date(r.start).getTime()) + '</div>' +
-      '<button class="stop" data-act="stop">STOP</button>' +
+      '<div class="hero-actions">' + actions + '</div>' +
       grid(s) +
       '<button class="link note-text" data-act="note">' + (r.note ? esc(r.note) : '+ note') + '</button>' +
       '</section>';
@@ -329,14 +336,20 @@
 
   function typeBar(s) {
     var cur = currentType();
-    return '<div class="types">' + L.typesOf(s).map(function (t) {
+    return '<div class="types">' + L.typesOf(s).filter(function (t) { return t.name !== L.PAUSE_TYPE; }).map(function (t) {
       return '<button class="type' + (t.name === cur ? ' on' : '') + '" style="--c:' + t.color + ';--on:' + L.textOn(t.color) + '" data-act="type" data-t="' + esc(t.name) + '">' + esc(t.name) + '</button>';
     }).join('') + '</div>';
+  }
+
+  function pauseLabel(s) {
+    var p = L.todayPause(s.today, Date.now());
+    return p >= 1 / 60 ? 'dont ' + Math.round(p * 60) + ' min de pause' : '';
   }
 
   function todayView(s) {
     return '<section class="today">' +
       '<div class="today-head"><span>Aujourd’hui</span><b id="today-total">' + L.duration(L.todayTotal(s.today, Date.now())) + '</b>' +
+      '<span class="pause-total" id="today-pause">' + pauseLabel(s) + '</span>' +
       '<button class="link small" data-act="recap">Récap</button></div>' +
       '<div class="timeline" id="timeline">' + timelineHtml(s) + '</div></section>';
   }
@@ -346,7 +359,7 @@
     var span = Math.max(tl.to - tl.from, 60000);
     var pct = function (ms) { return ((ms - tl.from) / span * 100).toFixed(2) + '%'; };
     var html = tl.segments.map(function (g) {
-      return '<span class="seg" style="left:' + pct(g.start) + ';width:' + (((g.end - g.start) / span) * 100).toFixed(2) + '%;background:' + L.typeColor(s, g.type) + '"></span>';
+      return '<span class="seg' + (g.type === L.PAUSE_TYPE ? ' pause' : '') + '" style="left:' + pct(g.start) + ';width:' + (((g.end - g.start) / span) * 100).toFixed(2) + '%;background-color:' + L.typeColor(s, g.type) + '"></span>';
     }).join('');
     var h = new Date(tl.from);
     h.setMinutes(0, 0, 0);
@@ -391,6 +404,8 @@
     if (el && r) el.textContent = L.elapsed(Date.now() - new Date(r.start).getTime());
     var total = document.getElementById('today-total');
     if (total && state.status) total.textContent = L.duration(L.todayTotal(state.status.today, Date.now()));
+    var pause = document.getElementById('today-pause');
+    if (pause && state.status) pause.textContent = pauseLabel(state.status);
     var tl = document.getElementById('timeline');
     if (tl && state.status && r && Date.now() % 30000 < 1000) tl.innerHTML = timelineHtml(state.status);
   }
@@ -475,6 +490,16 @@
     },
 
     stop: function () { act('stop', {}); },
+
+    // Pause : le compteur continue sur le même projet, en type Pause. Reprendre : retour à la tâche d'avant.
+    pause: function () {
+      var r = state.status.running;
+      if (r && !L.isPause(r)) act('start', { id: uid(), project: r.project, type: L.PAUSE_TYPE });
+    },
+    resume: function () {
+      var r = state.status.running;
+      if (r && L.isPause(r)) act('start', { id: uid(), project: r.project, type: state.type });
+    },
 
     more: function () {
       openDialog('<h2>Autres projets</h2>' + projectList(L.visibleProjects(state.status, state.showStudio).more, 'start') + cancelButton());

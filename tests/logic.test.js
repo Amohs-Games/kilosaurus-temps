@@ -134,7 +134,7 @@ test('frise : de 8 h (ou plus tôt) à maintenant, segments découpés à minuit
 test('ancien état en cache (v1.0) : rien ne casse', () => {
   const old = base();
   assert.equal(L.todayTotal(old.today, Date.now()), 0);
-  assert.deepEqual(L.typesOf(old).map((t) => t.name), ['Misc', 'Writing', 'Sound', 'Market', 'Concept', 'Art', 'TechArt', 'UI', 'Dev', 'Gameplay', 'Tooling', 'Debug']);
+  assert.deepEqual(L.typesOf(old).map((t) => t.name), ['Misc', 'Writing', 'Sound', 'Market', 'Concept', 'Art', 'TechArt', 'UI', 'Dev', 'Gameplay', 'Tooling', 'Debug', 'Pause']);
   assert.equal(L.typeOf({ project: 'Fluffy' }), 'Misc');
   const s = L.applyLocal(old, { action: 'start', params: { id: 'a', project: 'Fluffy' }, clientTime: '2026-10-01T09:00:00+02:00' });
   assert.equal(s.running.type, 'Misc');
@@ -197,5 +197,18 @@ test('couleur des boutons de projet : Fluffy en bleu, les autres en vert', () =>
 
 test('familles de tâches : Misc seul en premier, puis Contenu, Art, Code', () => {
   const fam = L.typesOf(base()).map((t) => t.family);
-  assert.deepEqual(fam, ['general', 'contenu', 'contenu', 'contenu', 'art', 'art', 'art', 'art', 'code', 'code', 'code', 'code']);
+  assert.deepEqual(fam, ['general', 'contenu', 'contenu', 'contenu', 'art', 'art', 'art', 'art', 'code', 'code', 'code', 'code', 'pause']);
+});
+
+test('pause du jour : comptée à part, et incluse dans le total', () => {
+  const now = at('2026-10-01T12:00:00+02:00');
+  const rows = [
+    sess('a', 'Dev', '2026-10-01T09:00:00+02:00', '2026-10-01T10:00:00+02:00'),
+    sess('p', 'Pause', '2026-10-01T10:00:00+02:00', '2026-10-01T10:30:00+02:00'),
+    sess('b', 'Dev', '2026-10-01T10:30:00+02:00', null),
+  ];
+  assert.equal(L.todayTotal(rows, now), 3);
+  assert.equal(L.todayPause(rows, now), 0.5);
+  assert.equal(L.isPause({ type: 'Pause' }), true);
+  assert.equal(L.isPause({ type: 'Dev' }), false);
 });

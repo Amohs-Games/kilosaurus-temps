@@ -95,11 +95,23 @@ function createWindow() {
     settings.y = b.y;
     saveSettings();
   });
-  // Les liens qui ouvrent une fenêtre (« ouvrir en grand ») partent dans le navigateur.
+  // Les liens qui ouvrent une fenêtre (« Plus d'infos ») partent dans Chrome, version complète.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    openInChrome(url.replace(/[?&]mini=1/, ''));
     return { action: 'deny' };
   });
+}
+
+// Chrome s'il est installé, sinon le navigateur par défaut.
+function openInChrome(url) {
+  const candidates = [
+    path.join(process.env['ProgramFiles'] || 'C:\\Program Files', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+  ];
+  const chrome = candidates.find((p) => fs.existsSync(p));
+  if (!chrome) { shell.openExternal(url); return; }
+  require('child_process').spawn(chrome, [url], { detached: true, stdio: 'ignore' }).unref();
 }
 
 function loadSite() {
@@ -181,7 +193,7 @@ function buildMenu() {
       },
     },
     { type: 'separator' },
-    { label: 'Ouvrir en grand', click: () => shell.openExternal(SITE) },
+    { label: 'Plus d’infos (Chrome)', click: () => openInChrome(SITE) },
     {
       label: 'Recharger (dernière version)', click: async () => {
         await session.defaultSession.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] }).catch(() => {});

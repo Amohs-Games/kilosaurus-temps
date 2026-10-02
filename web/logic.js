@@ -23,6 +23,8 @@
     { name: 'Gameplay', color: '#6366F1', family: 'code' },
     { name: 'Tooling', color: '#8B5CF6', family: 'code' },
     { name: 'Debug', color: '#D946EF', family: 'code' },
+    // Pause : pas une tâche à choisir mais un état du compteur (bouton ⏸) ; le temps compte, marqué pause.
+    { name: 'Pause', color: '#94A3B8', family: 'pause' },
   ];
   var DEFAULT_TYPE = 'Misc';
   // Noms de la première version, encore possibles dans un état ou un réglage mis en cache.
@@ -209,7 +211,8 @@
     return Math.max(0, end - new Date(row.start).getTime()) / HOUR;
   }
 
-  // Total du jour : la part des sessions entre minuit et maintenant, plus les blocs du jour.
+  // Total du jour : la part des sessions entre minuit et maintenant, plus les blocs du jour. Les
+  // pauses font partie du travail : elles y comptent.
   function todayTotal(rows, nowMs) {
     var from = startOfDay(nowMs);
     var key = dayKey(nowMs);
@@ -219,6 +222,14 @@
       var b = Math.min(r.end ? new Date(r.end).getTime() : nowMs, nowMs);
       return sum + Math.max(0, b - a) / HOUR;
     }, 0);
+  }
+
+  var PAUSE_TYPE = 'Pause';
+  function isPause(row) { return typeOf(row) === PAUSE_TYPE; }
+
+  // Part du total du jour passée en pause.
+  function todayPause(rows, nowMs) {
+    return todayTotal((rows || []).filter(isPause), nowMs);
   }
 
   // Frise du jour : de min(8 h, première session) à maintenant ; les blocs n'ont pas d'heure.
@@ -284,7 +295,7 @@
     elapsed: elapsed, duration: duration, clock: clock, dayLabel: dayLabel,
     editedInstant: editedInstant, visibleProjects: visibleProjects, pickableProjects: pickableProjects,
     isForgotten: isForgotten, applyLocal: applyLocal,
-    typesOf: typesOf, typeOf: typeOf, typeColor: typeColor, textOn: textOn, projectColor: projectColor, rowHours: rowHours, todayTotal: todayTotal,
+    typesOf: typesOf, typeOf: typeOf, typeColor: typeColor, textOn: textOn, projectColor: projectColor, isPause: isPause, todayPause: todayPause, PAUSE_TYPE: PAUSE_TYPE, rowHours: rowHours, todayTotal: todayTotal,
     dayTimeline: dayTimeline, weekRange: weekRange, monthRange: monthRange, aggregate: aggregate, recapMatches: recapMatches,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

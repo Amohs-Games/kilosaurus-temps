@@ -34,6 +34,8 @@ var Core = (function () {
     { name: 'Gameplay', color: '#6366F1', family: 'code' },
     { name: 'Tooling', color: '#8B5CF6', family: 'code' },
     { name: 'Debug', color: '#D946EF', family: 'code' },
+    // Pause : pas une tâche à choisir mais un état du compteur (bouton ⏸) ; le temps compte, marqué pause.
+    { name: 'Pause', color: '#94A3B8', family: 'pause' },
   ];
   var TYPE_NAMES = TYPES.map(function (t) { return t.name; });
   var DEFAULT_TYPE = 'Misc';

@@ -135,6 +135,15 @@ async function main() {
   s = await api(P, { ...me, action: 'status' });
   check(s.running?.type === 'Art' && s.last?.type === 'Dev' && s.last?.project === 'Fluffy', 'serveur : bascule de type Dev → Art sur Fluffy');
   check(await page.evaluate('document.querySelectorAll("#timeline .seg").length') >= 1, 'la frise montre la journée');
+  await page.click('[data-act="pause"]');
+  await page.waitFor('document.querySelector(".sync-ok") && document.querySelector(".hero.paused") && document.querySelector("[data-act=resume]")', 'pause');
+  s = await api(P, { ...me, action: 'status' });
+  check(s.running?.type === 'Pause' && s.running?.project === 'Fluffy' && s.last?.type === 'Art', 'serveur : la pause est un morceau Pause, le compteur continue');
+  check(!(await page.evaluate('!!document.querySelector("[data-act=type][data-t=Pause]")')), 'la pause n’est pas une tâche à choisir');
+  await page.shot('02a-pause');
+  await page.click('[data-act="resume"]');
+  await page.waitFor('document.querySelector(".sync-ok") && !document.querySelector(".hero.paused") && /Art/.test(document.querySelector(".hero-project").textContent)', 'reprise');
+  check((await api(P, { ...me, action: 'status' })).running?.type === 'Art', 'serveur : reprise sur la tâche d’avant');
   await page.click('[data-act="recap"]');
   await page.waitFor('document.querySelector("dialog .recap .bars")', 'récap semaine');
   await page.shot('02b-recap');
@@ -234,6 +243,7 @@ async function main() {
   check(await shown('.hero') && await shown('.types'), 'mini : compteur, projets et tâches affichés');
   check(!(await shown('.today')) && !(await shown('.blocks')), 'mini : journée et blocs masqués');
   check(await page.evaluate('document.documentElement.scrollWidth <= 300'), 'mini : rien ne dépasse en largeur');
+  check(await page.evaluate('/Plus d.infos/.test((document.querySelector("[data-act=moreInfo]") || {}).textContent || "")'), 'mini : bouton « Plus d’infos »');
   await page.shot('11-mini');
 
   check(page.errors.length === 0, 'aucune erreur JavaScript' + (page.errors.length ? ' : ' + page.errors.join(' | ') : ''));
