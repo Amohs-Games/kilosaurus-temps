@@ -146,11 +146,11 @@ la tâche, ajouter du temps après coup, la journée et le récap.
 Une pause fait partie du travail : le compteur continue, mais le temps est marqué pause, pour savoir
 combien de minutes de pause on prend.
 
-- Compteur en cours : à côté de STOP, **⏸ Pause** bascule le compteur sur le type **Pause**, même
+- Compteur en cours : sous STOP, **⏸ Pause** bascule le compteur sur le type **Pause**, même
   projet (une bascule ordinaire). Pause n'est pas une tâche à choisir : elle n'apparaît pas dans le
   sélecteur.
-- En pause : la carte affiche PAUSE et sa durée, **▶ Reprendre · <tâche>** rebascule sur la tâche
-  d'avant (gardée sur l'appareil), STOP arrête.
+- En pause : la carte affiche PAUSE et sa durée ; STOP arrête, et dessous **▶ Reprendre · <tâche>**
+  rebascule sur la tâche d'avant (gardée sur l'appareil).
 - Les pauses comptent dans le total du jour (« dont N min de pause »), sont hachurées sur la frise,
   et apparaissent comme un type dans les récaps. Dans la Sheet : des lignes de type Pause.
 - Le widget du téléphone n'a pas de pause (lecture / stop seulement).

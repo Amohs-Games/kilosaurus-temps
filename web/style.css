@@ -282,13 +282,11 @@ html.mini .block-title { font-size: 11px; margin-top: 0; }
 html.mini .block { gap: 5px; }
 html.mini .note-text, html.mini .add, html.mini .today { display: none; }
 
-/* Pause : le compteur continue, marqué pause. Boutons côte à côte sous le chrono. */
-.hero-actions { display: flex; gap: 8px; width: 100%; margin-top: 6px; }
-.hero-actions .stop { margin-top: 0; flex: 2; }
-.hero-actions .stop.small-stop { flex: 1; }
+/* Pause : le compteur continue, marqué pause. STOP en haut, Pause (ou Reprendre) juste dessous. */
+.hero-actions { display: flex; flex-direction: column; gap: 8px; width: 100%; margin-top: 6px; }
+.hero-actions .stop { margin-top: 0; }
 .pause, .resume {
-  flex: 1;
-  min-height: 60px;
+  min-height: 48px;
   border-radius: 14px;
   font-size: 18px;
   font-weight: 700;
@@ -296,7 +294,7 @@ html.mini .note-text, html.mini .add, html.mini .today { display: none; }
   border: 1px solid #94a3b8;
   color: var(--fg);
 }
-.resume { flex: 2; background: var(--go); border-color: var(--go); color: #fff; }
+.resume { background: var(--go); border-color: var(--go); color: #fff; }
 .hero.paused .hero-time { color: #94a3b8; }
 .hero.paused { border-style: dashed; border-color: #94a3b8; }
 /* Pauses hachurées sur la frise : du temps compté, mais qu'on distingue du travail. */
@@ -314,3 +312,7 @@ html.mini .more-info {
   text-decoration: none;
   white-space: nowrap;
 }
+
+/* Icônes des boutons STOP / Pause / Reprendre, alignées avec le texte. */
+.stop, .pause, .resume { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.btn-icon { width: 1em; height: 1em; flex: none; }

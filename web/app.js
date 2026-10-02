@@ -11,7 +11,7 @@
 
   var L = window.KTLogic;
   var API = window.KT_API_URL;
-  var VERSION = '1.9.0';
+  var VERSION = '1.10.0';
   var TIMEOUT_MS = 25000; // Apps Script répond parfois en 30 s ; l'écran, lui, a déjà réagi.
   var RETRY_MS = 30000;
   var BUSY_RETRY_MS = 5000;
@@ -242,6 +242,13 @@
     });
   }
 
+  // Icônes des boutons du compteur, en vecteur (même rendu partout, pas d'emoji).
+  var ICON = {
+    stop: '<svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2.5" fill="currentColor"/></svg>',
+    pause: '<svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5.5" y="4.5" width="4.5" height="15" rx="1.5" fill="currentColor"/><rect x="14" y="4.5" width="4.5" height="15" rx="1.5" fill="currentColor"/></svg>',
+    play: '<svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.8v14.4a1 1 0 0 0 1.5.86l11.6-7.2a1 1 0 0 0 0-1.72L8.5 3.94A1 1 0 0 0 7 4.8z" fill="currentColor"/></svg>',
+  };
+
   var GEAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
 
   function render() {
@@ -322,9 +329,10 @@
     var t = L.typeOf(r);
     var c = L.typeColor(s, t);
     // En pause, le compteur continue (la pause fait partie du travail) : on reprend ou on arrête.
+    var stop = '<button class="stop" data-act="stop">' + ICON.stop + 'STOP</button>';
     var actions = paused
-      ? '<button class="resume" data-act="resume">▶ Reprendre · ' + esc(state.type) + '</button><button class="stop small-stop" data-act="stop">STOP</button>'
-      : '<button class="stop" data-act="stop">STOP</button><button class="pause" data-act="pause">⏸ Pause</button>';
+      ? stop + '<button class="resume" data-act="resume">' + ICON.play + 'Reprendre · ' + esc(state.type) + '</button>'
+      : stop + '<button class="pause" data-act="pause">' + ICON.pause + 'Pause</button>';
     return '<section class="hero' + (paused ? ' paused' : '') + '">' +
       '<div class="hero-project">' + esc(r.project) + ' · <span class="pill" style="background:' + c + ';color:' + L.textOn(c) + '">' + esc(t) + '</span></div>' +
       '<div class="hero-time" id="elapsed">' + L.elapsed(Date.now() - new Date(r.start).getTime()) + '</div>' +
