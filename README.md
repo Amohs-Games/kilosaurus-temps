@@ -302,8 +302,10 @@ quelconques (24 h au plus), refusée si elle chevauche une autre de vos sessions
 ## Mettre à jour
 
 - **Le script** : collez les fichiers modifiés, puis publiez une nouvelle version (étape 5).
-- **L'app** : poussez sur `main`. Les téléphones affichent la nouvelle version à l'ouverture
-  suivante. Si un changement doit s'afficher sans attendre, changez `CACHE` dans `web/sw.js`.
+- **L'app web** : poussez sur `main` (une minute de publication). La nouvelle version s'affiche dès
+  l'ouverture suivante de la page : le service worker charge le réseau d'abord et ne garde sa copie
+  que pour le hors ligne ; une page déjà ouverte se recharge seule quand la nouvelle version
+  s'installe. L'APK, lui, embarque sa copie du site : il faut le reconstruire et le réinstaller.
 
 ## Développement
 

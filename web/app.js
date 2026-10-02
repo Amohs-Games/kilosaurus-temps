@@ -11,7 +11,7 @@
 
   var L = window.KTLogic;
   var API = window.KT_API_URL;
-  var VERSION = '1.10.0';
+  var VERSION = '1.11.0';
   var TIMEOUT_MS = 25000; // Apps Script répond parfois en 30 s ; l'écran, lui, a déjà réagi.
   var RETRY_MS = 30000;
   var BUSY_RETRY_MS = 5000;
@@ -769,7 +769,18 @@
 
   // Hors ligne pour le web seulement : dans l'APK, les fichiers sont déjà sur le téléphone.
   if ('serviceWorker' in navigator && location.protocol === 'https:' && !window.KTAndroid) {
-    navigator.serviceWorker.register('sw.js');
+    // sw.js toujours redemandé au serveur, et une nouvelle version recharge la page une fois : une
+    // mise à jour du site s'affiche dès l'ouverture, pas à la suivante.
+    var hadController = !!navigator.serviceWorker.controller;
+    var reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (!hadController || reloaded) return;
+      reloaded = true;
+      location.reload();
+    });
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function (reg) {
+      reg.update();
+    }).catch(function () { /* sans service worker, l'app marche, simplement pas hors ligne */ });
   }
 
   // Mini-fenêtre verrouillée : la barre du haut ne sert plus de poignée pour la déplacer.
