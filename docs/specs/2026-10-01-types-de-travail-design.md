@@ -153,11 +153,12 @@ combien de minutes de pause on prend.
 - **Grand compteur** : la durée de la séance depuis son lancement ; il ne repart pas à zéro à une
   pause, une reprise ou un changement de tâche. **Dessous, en plus petit** : « Pause h:mm:ss », le
   cumul des pauses de la séance, qui avance pendant une pause.
-- **⏸ Pause**, au-dessus de STOP, même taille, couleur pleine ambre : bascule le compteur sur le
-  type **Pause**, même projet. Pause n'est pas une tâche à choisir : elle n'apparaît pas dans le
+- **PAUSE**, au-dessus de STOP, même taille, gris plein : bascule le compteur sur le type
+  **Pause**, même projet. Pause n'est pas une tâche à choisir : elle n'apparaît pas dans le
   sélecteur.
-- **En pause** : **▶ Reprendre · <tâche>** (à la place de Pause) rebascule sur la tâche d'avant,
-  gardée sur l'appareil ; STOP arrête.
+- **En pause** : **REPRENDRE** (à la place de PAUSE, et qui clignote doucement) rebascule sur la
+  tâche d'avant, gardée sur l'appareil ; STOP arrête. Le grand compteur passe en gris, le cumul des
+  pauses ressort. Sans animation si le système le demande (contour fixe à la place).
 - La séance se recalcule à partir des lignes du jour (`status.today`) : rien de nouveau n'est
   stocké. Dans la Sheet, toujours un morceau par tâche et par pause (type Pause).
 - Les pauses comptent dans le total du jour (« dont N min de pause »), sont hachurées sur la frise

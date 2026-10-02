@@ -292,7 +292,7 @@ html.mini .note-text, html.mini .add, html.mini .today { display: none; }
   font-size: 22px;
   font-weight: 700;
   letter-spacing: .04em;
-  background: #d97706;
+  background: #6b7280;
   border: 0;
   color: #fff;
 }
@@ -320,5 +320,14 @@ html.mini .more-info {
 
 /* Cumul des pauses de la séance, sous le grand compteur. */
 .hero-pause { font-size: 17px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; margin-top: -4px; }
-.hero.paused .hero-pause { color: #d97706; }
+.hero.paused .hero-pause { color: var(--fg); }
 html.mini .hero-pause { font-size: 13px; }
+
+/* En pause : le grand compteur passe en gris, le cumul des pauses ressort, et REPRENDRE clignote
+   doucement pour rappeler que la séance est en pause. */
+.hero.paused .hero-time { color: #6b7280; }
+.hero.paused .resume { animation: kt-blink 1.4s ease-in-out infinite; }
+@keyframes kt-blink { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) {
+  .hero.paused .resume { animation: none; box-shadow: 0 0 0 3px var(--card), 0 0 0 5px var(--go); }
+}

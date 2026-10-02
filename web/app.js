@@ -11,7 +11,7 @@
 
   var L = window.KTLogic;
   var API = window.KT_API_URL;
-  var VERSION = '1.12.0';
+  var VERSION = '1.13.0';
   var TIMEOUT_MS = 25000; // Apps Script répond parfois en 30 s ; l'écran, lui, a déjà réagi.
   var RETRY_MS = 30000;
   var BUSY_RETRY_MS = 5000;
@@ -332,8 +332,8 @@
     // compris) ; dessous, le cumul des pauses de la séance. Pause (ou Reprendre) au-dessus de STOP.
     var stop = '<button class="stop" data-act="stop">' + ICON.stop + 'STOP</button>';
     var actions = (paused
-      ? '<button class="resume" data-act="resume">' + ICON.play + 'Reprendre · ' + esc(state.type) + '</button>'
-      : '<button class="pause" data-act="pause">' + ICON.pause + 'Pause</button>') + stop;
+      ? '<button class="resume" data-act="resume">' + ICON.play + 'REPRENDRE</button>'
+      : '<button class="pause" data-act="pause">' + ICON.pause + 'PAUSE</button>') + stop;
     var session = L.sessionOf(s.today, r, Date.now());
     return '<section class="hero' + (paused ? ' paused' : '') + '">' +
       '<div class="hero-project">' + esc(r.project) + ' · <span class="pill" style="background:' + c + ';color:' + L.textOn(c) + '">' + esc(t) + '</span></div>' +
