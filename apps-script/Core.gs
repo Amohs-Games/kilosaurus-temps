@@ -19,20 +19,21 @@ var Core = (function () {
   var WRITE_ACTIONS = ['start', 'stop', 'note', 'logBlock', 'logSession', 'editLast', 'addProject'];
   // Types de travail, dans l'ordre d'affichage. Une ligne sans type (historique) vaut Misc.
   var TYPES = [
-    // Familles : une couleur chacune (gris, ambre, vert, bleu), en nuances proches pour distinguer
-    // les tâches sur la frise et dans les récaps. Misc, la tâche par défaut, toujours en premier.
+    // Trois ambiances = trois arcs du cercle des couleurs : Contenu en tons chauds (jaune → rouge),
+    // Art en tons nature (vert-jaune → cyan), Code en tons froids (bleu → magenta). Dans un arc, des
+    // teintes nettement différentes. Misc, la tâche par défaut, en gris et toujours en premier.
     { name: 'Misc', color: '#8A8F98', family: 'general' },
     { name: 'Writing', color: '#EAB308', family: 'contenu' },
-    { name: 'Sound', color: '#F5CF4F', family: 'contenu' },
-    { name: 'Market', color: '#C2930A', family: 'contenu' },
-    { name: 'Concept', color: '#86EFAC', family: 'art' },
+    { name: 'Sound', color: '#F97316', family: 'contenu' },
+    { name: 'Market', color: '#EF4444', family: 'contenu' },
+    { name: 'Concept', color: '#84CC16', family: 'art' },
     { name: 'Art', color: '#22C55E', family: 'art' },
-    { name: 'TechArt', color: '#15803D', family: 'art' },
-    { name: 'UI', color: '#4ADE80', family: 'art' },
+    { name: 'TechArt', color: '#14B8A6', family: 'art' },
+    { name: 'UI', color: '#06B6D4', family: 'art' },
     { name: 'Dev', color: '#3B82F6', family: 'code' },
-    { name: 'Gameplay', color: '#93C5FD', family: 'code' },
-    { name: 'Tooling', color: '#1D4ED8', family: 'code' },
-    { name: 'Debug', color: '#60A5FA', family: 'code' },
+    { name: 'Gameplay', color: '#6366F1', family: 'code' },
+    { name: 'Tooling', color: '#8B5CF6', family: 'code' },
+    { name: 'Debug', color: '#D946EF', family: 'code' },
   ];
   var TYPE_NAMES = TYPES.map(function (t) { return t.name; });
   var DEFAULT_TYPE = 'Misc';

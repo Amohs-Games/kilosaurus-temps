@@ -23,24 +23,25 @@ Succès :
 Liste fixe, rangée par familles. Misc, le type par défaut, toujours en premier. Les types ne se
 modifient pas depuis l'app.
 
-Une couleur par famille (quatre thèmes au lieu d'une couleur par tâche) ; dans une famille, des
-nuances proches, du clair au foncé, pour distinguer encore les tâches sur la frise et les récaps.
-L'ordre de la liste place chaque famille sur sa rangée de quatre dans l'app.
+Trois ambiances, une par famille, prises sur trois arcs du cercle des couleurs : on reconnaît la
+famille d'un coup d'œil, et dans une famille les teintes sont assez différentes pour distinguer
+chaque tâche sur la frise et les récaps. L'ordre de la liste place chaque famille sur sa rangée de
+quatre dans l'app.
 
-| Famille | Type | Couleur |
+| Famille (ambiance) | Type | Couleur |
 |---|---|---|
-| Général (gris) | Misc | `#8A8F98` |
-| Contenu (ambre) | Writing | `#EAB308` |
-| | Sound | `#F5CF4F` |
-| | Market | `#C2930A` |
-| Art (vert) | Concept | `#86EFAC` |
-| | Art | `#22C55E` |
-| | TechArt | `#15803D` |
-| | UI | `#4ADE80` |
-| Code (bleu) | Dev | `#3B82F6` |
-| | Gameplay | `#93C5FD` |
-| | Tooling | `#1D4ED8` |
-| | Debug | `#60A5FA` |
+| Général (gris, à part) | Misc | `#8A8F98` |
+| Contenu (chauds : jaune → rouge) | Writing | `#EAB308` jaune |
+| | Sound | `#F97316` orange |
+| | Market | `#EF4444` rouge |
+| Art (nature : vert-jaune → cyan) | Concept | `#84CC16` vert pomme |
+| | Art | `#22C55E` vert |
+| | TechArt | `#14B8A6` sarcelle |
+| | UI | `#06B6D4` cyan |
+| Code (froids : bleu → magenta) | Dev | `#3B82F6` bleu |
+| | Gameplay | `#6366F1` indigo |
+| | Tooling | `#8B5CF6` violet |
+| | Debug | `#D946EF` magenta |
 
 Les mêmes couleurs servent aux boutons de l'app, à la frise et aux récaps. `status.types` porte
 aussi la famille (`family`) de chaque type.
