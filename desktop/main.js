@@ -95,23 +95,29 @@ function createWindow() {
     settings.y = b.y;
     saveSettings();
   });
-  // Les liens qui ouvrent une fenêtre (« Plus d'infos ») partent dans Chrome, version complète.
+  // Les liens qui ouvrent une fenêtre (« Plus d'infos ») partent dans Brave, version complète.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    openInChrome(url.replace(/[?&]mini=1/, ''));
+    openInBrowser(url.replace(/[?&]mini=1/, ''));
     return { action: 'deny' };
   });
 }
 
-// Chrome s'il est installé, sinon le navigateur par défaut.
-function openInChrome(url) {
-  const candidates = [
-    path.join(process.env['ProgramFiles'] || 'C:\\Program Files', 'Google', 'Chrome', 'Application', 'chrome.exe'),
-    path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Google', 'Chrome', 'Application', 'chrome.exe'),
-    path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+// Brave s'il est installé, sinon Chrome, sinon le navigateur par défaut.
+function openInBrowser(url) {
+  const roots = [
+    process.env['ProgramFiles'] || 'C:\\Program Files',
+    process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)',
+    process.env.LOCALAPPDATA || '',
   ];
-  const chrome = candidates.find((p) => fs.existsSync(p));
-  if (!chrome) { shell.openExternal(url); return; }
-  require('child_process').spawn(chrome, [url], { detached: true, stdio: 'ignore' }).unref();
+  const browsers = [
+    ['BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'],
+    ['Google', 'Chrome', 'Application', 'chrome.exe'],
+  ];
+  const candidates = [];
+  browsers.forEach((parts) => roots.forEach((root) => candidates.push(path.join(root, ...parts))));
+  const exe = candidates.find((p) => fs.existsSync(p));
+  if (!exe) { shell.openExternal(url); return; }
+  require('child_process').spawn(exe, [url], { detached: true, stdio: 'ignore' }).unref();
 }
 
 function loadSite() {
@@ -193,7 +199,7 @@ function buildMenu() {
       },
     },
     { type: 'separator' },
-    { label: 'Plus d’infos (Chrome)', click: () => openInChrome(SITE) },
+    { label: 'Plus d’infos (Brave)', click: () => openInBrowser(SITE) },
     {
       label: 'Recharger (dernière version)', click: async () => {
         await session.defaultSession.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] }).catch(() => {});

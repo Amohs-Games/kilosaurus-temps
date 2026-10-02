@@ -270,7 +270,7 @@ lancez `node node_modules/electron/install.js`. Le démarrage automatique pointe
 si le dépôt est déplacé, relancez `npm start` depuis le nouvel emplacement.
 
 - **Déplacer** : glisser la barre du haut. **Plus d’infos ↗** ouvre la version complète (journée,
-  récap, blocs) dans Chrome, ou dans le navigateur par défaut si Chrome est absent.
+  récap, blocs) dans Brave, sinon Chrome, sinon le navigateur par défaut.
 - **Icône près de l'horloge** (clic droit) : afficher / masquer, **Verrouiller la position**,
   **Toujours au-dessus**, **Lancer au démarrage**, remettre dans le coin, ouvrir en grand,
   recharger, quitter. Un clic gauche affiche ou masque la fenêtre.

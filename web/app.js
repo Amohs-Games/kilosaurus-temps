@@ -304,7 +304,7 @@
     return '<header class="top">' +
       '<button class="sync sync-' + state.sync + '" data-act="sync" aria-label="État de la synchro"></button>' +
       '<span class="me">' + esc(s ? s.me : '') + (s && s.agent ? ' <span class="tag">agent</span>' : '') + '</span>' +
-      // Mini-fenêtre : la version complète (journée, récap, blocs) s'ouvre dans le navigateur (Chrome).
+      // Mini-fenêtre : la version complète (journée, récap, blocs) s'ouvre dans le navigateur (Brave).
       (MINI ? '<a class="more-info" data-act="moreInfo" href="./" target="_blank">Plus d’infos ↗</a>' : '') +
       '<button class="icon" data-act="menu" aria-label="Menu">' + GEAR + '</button>' +
       '</header>';
