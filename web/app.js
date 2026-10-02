@@ -11,7 +11,7 @@
 
   var L = window.KTLogic;
   var API = window.KT_API_URL;
-  var VERSION = '1.6.0';
+  var VERSION = '1.7.0';
   var TIMEOUT_MS = 25000; // Apps Script répond parfois en 30 s ; l'écran, lui, a déjà réagi.
   var RETRY_MS = 30000;
   var BUSY_RETRY_MS = 5000;

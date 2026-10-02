@@ -8,18 +8,20 @@
   var BLOCK_HOURS = [2, 4, 6, 8, 10, 12];
   // Copie de la liste du serveur (Core.gs), pour un état mis en cache par une version sans types.
   var DEFAULT_TYPES = [
-    { name: 'Misc', color: '#8A8F98' },
-    { name: 'Art', color: '#22C55E' },
-    { name: 'Dev', color: '#3B82F6' },
-    { name: 'Writing', color: '#EAB308' },
-    { name: 'UI', color: '#EC4899' },
-    { name: 'Gameplay', color: '#F97316' },
-    { name: 'Sound', color: '#18181B' },
-    { name: 'Market', color: '#8B5CF6' },
-    { name: 'Debug', color: '#EF4444' },
-    { name: 'TechArt', color: '#14B8A6' },
-    { name: 'Concept', color: '#E5E7EB' },
-    { name: 'Tooling', color: '#92400E' },
+    // Familles : une couleur chacune (gris, ambre, vert, bleu), en nuances proches pour distinguer
+    // les tâches sur la frise et dans les récaps. Misc, la tâche par défaut, toujours en premier.
+    { name: 'Misc', color: '#8A8F98', family: 'general' },
+    { name: 'Writing', color: '#EAB308', family: 'contenu' },
+    { name: 'Sound', color: '#F5CF4F', family: 'contenu' },
+    { name: 'Market', color: '#C2930A', family: 'contenu' },
+    { name: 'Concept', color: '#86EFAC', family: 'art' },
+    { name: 'Art', color: '#22C55E', family: 'art' },
+    { name: 'TechArt', color: '#15803D', family: 'art' },
+    { name: 'UI', color: '#4ADE80', family: 'art' },
+    { name: 'Dev', color: '#3B82F6', family: 'code' },
+    { name: 'Gameplay', color: '#93C5FD', family: 'code' },
+    { name: 'Tooling', color: '#1D4ED8', family: 'code' },
+    { name: 'Debug', color: '#60A5FA', family: 'code' },
   ];
   var DEFAULT_TYPE = 'Misc';
   // Noms de la première version, encore possibles dans un état ou un réglage mis en cache.

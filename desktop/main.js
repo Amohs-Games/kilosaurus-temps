@@ -6,7 +6,7 @@
 // Icône près de l'horloge : afficher / masquer, verrouiller la position, toujours au-dessus, lancer
 // au démarrage, ouvrir en grand, quitter. Ctrl + Alt + K affiche ou masque la fenêtre.
 // Les réglages (position, verrou…) sont gardés dans window.json, dans le dossier de l'app.
-const { app, BrowserWindow, Tray, Menu, screen, shell, nativeImage, ipcMain, globalShortcut } = require('electron');
+const { app, BrowserWindow, Tray, Menu, screen, shell, nativeImage, ipcMain, globalShortcut, session } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
@@ -182,7 +182,12 @@ function buildMenu() {
     },
     { type: 'separator' },
     { label: 'Ouvrir en grand', click: () => shell.openExternal(SITE) },
-    { label: 'Recharger', click: () => win.reload() },
+    {
+      label: 'Recharger (dernière version)', click: async () => {
+        await session.defaultSession.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] }).catch(() => {});
+        loadSite();
+      },
+    },
     { label: 'Quitter', click: () => app.quit() },
   ]));
 }
@@ -193,8 +198,16 @@ if (!app.requestSingleInstanceLock()) {
   // Un second lancement montre la fenêtre déjà ouverte au lieu d'en créer une autre.
   app.on('second-instance', () => { if (win) { win.show(); applyOnTop(); } });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     log('lancement (' + process.execPath + ')');
+    // Le site s'installe en cache (service worker) et servirait sinon l'ancienne version jusqu'au
+    // lancement suivant. Vidé à chaque lancement : toujours la dernière version. Le code et les
+    // réglages (localStorage) sont gardés ; sans réseau, la fenêtre réessaie toute seule.
+    try {
+      await session.defaultSession.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] });
+    } catch (e) {
+      log('cache non vidé : ' + e.message);
+    }
     settings = loadSettings();
     createWindow();
     applyAutostart();

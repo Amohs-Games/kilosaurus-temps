@@ -20,25 +20,30 @@ Succès :
 
 ### Les types
 
-Liste fixe, dans cet ordre : **Misc**, **Art**, **Dev**, **Writing**, **UI**, **Gameplay**,
-**Sound**, **Market**, **Debug**, **TechArt**, **Concept**, **Tooling**. Misc est le type par défaut. Les types ne se modifient pas depuis l'app.
+Liste fixe, rangée par familles. Misc, le type par défaut, toujours en premier. Les types ne se
+modifient pas depuis l'app.
 
-| Type | Couleur |
-|---|---|
-| Misc | `#8A8F98` (gris) |
-| Art | `#22C55E` (vert) |
-| Dev | `#3B82F6` (bleu) |
-| Writing | `#EAB308` (jaune) |
-| UI | `#EC4899` (rose) |
-| Gameplay | `#F97316` (orange) |
-| Sound | `#18181B` (noir) |
-| Market | `#8B5CF6` (violet) |
-| Debug | `#EF4444` (rouge) |
-| TechArt | `#14B8A6` (sarcelle) |
-| Concept | `#E5E7EB` (blanc cassé) |
-| Tooling | `#92400E` (brun) |
+Une couleur par famille (quatre thèmes au lieu d'une couleur par tâche) ; dans une famille, des
+nuances proches, du clair au foncé, pour distinguer encore les tâches sur la frise et les récaps.
+L'ordre de la liste place chaque famille sur sa rangée de quatre dans l'app.
 
-Les mêmes couleurs servent aux boutons de l'app, au widget, à la frise et aux récaps.
+| Famille | Type | Couleur |
+|---|---|---|
+| Général (gris) | Misc | `#8A8F98` |
+| Contenu (ambre) | Writing | `#EAB308` |
+| | Sound | `#F5CF4F` |
+| | Market | `#C2930A` |
+| Art (vert) | Concept | `#86EFAC` |
+| | Art | `#22C55E` |
+| | TechArt | `#15803D` |
+| | UI | `#4ADE80` |
+| Code (bleu) | Dev | `#3B82F6` |
+| | Gameplay | `#93C5FD` |
+| | Tooling | `#1D4ED8` |
+| | Debug | `#60A5FA` |
+
+Les mêmes couleurs servent aux boutons de l'app, à la frise et aux récaps. `status.types` porte
+aussi la famille (`family`) de chaque type.
 
 **Anciens noms.** La première version s'appelait Autre, Dev, Art, Narration. `Autre` se lit `Misc`
 et `Narration` se lit `Writing`, à la lecture des lignes comme à la réception d'une requête : la
