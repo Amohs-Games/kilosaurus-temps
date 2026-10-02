@@ -282,25 +282,26 @@ html.mini .block-title { font-size: 11px; margin-top: 0; }
 html.mini .block { gap: 5px; }
 html.mini .note-text, html.mini .add, html.mini .today { display: none; }
 
-/* Pause : le compteur continue, marqué pause. STOP en haut, Pause (ou Reprendre) juste dessous. */
+/* Pause : le compteur continue, marqué pause. Pause (ou Reprendre) au-dessus de STOP, même taille
+   et même intensité : couleur pleine, ambre comme un feu orange. */
 .hero-actions { display: flex; flex-direction: column; gap: 8px; width: 100%; margin-top: 6px; }
 .hero-actions .stop { margin-top: 0; }
 .pause, .resume {
-  min-height: 48px;
+  min-height: 60px;
   border-radius: 14px;
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 700;
-  background: color-mix(in srgb, #94a3b8 22%, var(--card));
-  border: 1px solid #94a3b8;
-  color: var(--fg);
+  letter-spacing: .04em;
+  background: #d97706;
+  border: 0;
+  color: #fff;
 }
 .resume { background: var(--go); border-color: var(--go); color: #fff; }
-.hero.paused .hero-time { color: #94a3b8; }
 .hero.paused { border-style: dashed; border-color: #94a3b8; }
 /* Pauses hachurées sur la frise : du temps compté, mais qu'on distingue du travail. */
 .seg.pause { background-image: repeating-linear-gradient(135deg, rgb(255 255 255 / .45) 0 3px, transparent 3px 7px); }
 .pause-total { font-size: 13px; color: var(--muted); }
-html.mini .pause, html.mini .resume { min-height: 40px; font-size: 14px; }
+html.mini .pause, html.mini .resume { min-height: 40px; font-size: 16px; }
 html.mini .more-info {
   -webkit-app-region: no-drag;
   padding: 4px 10px;
@@ -316,3 +317,8 @@ html.mini .more-info {
 /* Icônes des boutons STOP / Pause / Reprendre, alignées avec le texte. */
 .stop, .pause, .resume { display: flex; align-items: center; justify-content: center; gap: 10px; }
 .btn-icon { width: 1em; height: 1em; flex: none; }
+
+/* Cumul des pauses de la séance, sous le grand compteur. */
+.hero-pause { font-size: 17px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; margin-top: -4px; }
+.hero.paused .hero-pause { color: #d97706; }
+html.mini .hero-pause { font-size: 13px; }

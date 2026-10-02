@@ -141,18 +141,27 @@ la tâche, ajouter du temps après coup, la journée et le récap.
   l'appareil, décoché par défaut. Masqué ou non, son historique compte dans les totaux et récaps.
 - **Blocs** (Déclarer, Autre jour) : enregistrés avec le type choisi.
 
-### Pause
+### Pause et séance
 
 Une pause fait partie du travail : le compteur continue, mais le temps est marqué pause, pour savoir
 combien de minutes de pause on prend.
 
-- Compteur en cours : sous STOP, **⏸ Pause** bascule le compteur sur le type **Pause**, même
-  projet (une bascule ordinaire). Pause n'est pas une tâche à choisir : elle n'apparaît pas dans le
+- **Séance** : la suite continue de morceaux sur le même projet, du lancement jusqu'à STOP. Changer
+  de tâche ou faire une pause ferme un morceau et en ouvre un autre à la même seconde : on reste
+  dans la séance. Un autre projet, ou un trou (compteur arrêté puis relancé), ouvre une nouvelle
+  séance.
+- **Grand compteur** : la durée de la séance depuis son lancement ; il ne repart pas à zéro à une
+  pause, une reprise ou un changement de tâche. **Dessous, en plus petit** : « Pause h:mm:ss », le
+  cumul des pauses de la séance, qui avance pendant une pause.
+- **⏸ Pause**, au-dessus de STOP, même taille, couleur pleine ambre : bascule le compteur sur le
+  type **Pause**, même projet. Pause n'est pas une tâche à choisir : elle n'apparaît pas dans le
   sélecteur.
-- En pause : la carte affiche PAUSE et sa durée ; STOP arrête, et dessous **▶ Reprendre · <tâche>**
-  rebascule sur la tâche d'avant (gardée sur l'appareil).
-- Les pauses comptent dans le total du jour (« dont N min de pause »), sont hachurées sur la frise,
-  et apparaissent comme un type dans les récaps. Dans la Sheet : des lignes de type Pause.
+- **En pause** : **▶ Reprendre · <tâche>** (à la place de Pause) rebascule sur la tâche d'avant,
+  gardée sur l'appareil ; STOP arrête.
+- La séance se recalcule à partir des lignes du jour (`status.today`) : rien de nouveau n'est
+  stocké. Dans la Sheet, toujours un morceau par tâche et par pause (type Pause).
+- Les pauses comptent dans le total du jour (« dont N min de pause »), sont hachurées sur la frise
+  et apparaissent comme un type dans les récaps.
 - Le widget du téléphone n'a pas de pause (lecture / stop seulement).
 
 ### Total du jour et frise

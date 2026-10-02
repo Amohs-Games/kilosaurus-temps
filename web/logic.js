@@ -232,6 +232,29 @@
     return todayTotal((rows || []).filter(isPause), nowMs);
   }
 
+  var SAME_INSTANT_MS = 1000;
+
+  /**
+   * Séance du compteur en cours : la suite continue de morceaux sur le même projet (changer de
+   * tâche ou faire une pause ferme un morceau et en ouvre un autre à la même seconde). Renvoie le
+   * début de la séance (le lancement) et le cumul des pauses, en cours compris. Un trou ou un autre
+   * projet ouvre une nouvelle séance.
+   */
+  function sessionOf(rows, running, nowMs) {
+    var start = new Date(running.start).getTime();
+    var pauseMs = isPause(running) ? Math.max(0, nowMs - start) : 0;
+    var closed = (rows || []).filter(function (r) { return r.start && r.end && r.project === running.project; });
+    for (;;) {
+      var prev = closed.filter(function (r) { return Math.abs(new Date(r.end).getTime() - start) <= SAME_INSTANT_MS; })[0];
+      if (!prev) break;
+      var prevStart = new Date(prev.start).getTime();
+      if (prevStart >= start) break; // garde-fou : jamais de boucle
+      if (isPause(prev)) pauseMs += new Date(prev.end).getTime() - prevStart;
+      start = prevStart;
+    }
+    return { start: start, pauseMs: pauseMs };
+  }
+
   // Frise du jour : de min(8 h, première session) à maintenant ; les blocs n'ont pas d'heure.
   function dayTimeline(rows, nowMs) {
     var midnight = startOfDay(nowMs);
@@ -295,7 +318,7 @@
     elapsed: elapsed, duration: duration, clock: clock, dayLabel: dayLabel,
     editedInstant: editedInstant, visibleProjects: visibleProjects, pickableProjects: pickableProjects,
     isForgotten: isForgotten, applyLocal: applyLocal,
-    typesOf: typesOf, typeOf: typeOf, typeColor: typeColor, textOn: textOn, projectColor: projectColor, isPause: isPause, todayPause: todayPause, PAUSE_TYPE: PAUSE_TYPE, rowHours: rowHours, todayTotal: todayTotal,
+    typesOf: typesOf, typeOf: typeOf, typeColor: typeColor, textOn: textOn, projectColor: projectColor, isPause: isPause, todayPause: todayPause, sessionOf: sessionOf, PAUSE_TYPE: PAUSE_TYPE, rowHours: rowHours, todayTotal: todayTotal,
     dayTimeline: dayTimeline, weekRange: weekRange, monthRange: monthRange, aggregate: aggregate, recapMatches: recapMatches,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

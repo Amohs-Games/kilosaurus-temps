@@ -140,6 +140,8 @@ async function main() {
   s = await api(P, { ...me, action: 'status' });
   check(s.running?.type === 'Pause' && s.running?.project === 'Fluffy' && s.last?.type === 'Art', 'serveur : la pause est un morceau Pause, le compteur continue');
   check(!(await page.evaluate('!!document.querySelector("[data-act=type][data-t=Pause]")')), 'la pause n’est pas une tâche à choisir');
+  check(/^Pause \d+:\d\d:\d\d$/.test(await page.evaluate('document.getElementById("session-pause").textContent')), 'le cumul des pauses s’affiche sous le compteur');
+  check(await page.evaluate('(() => { const b = [...document.querySelectorAll(".hero-actions button")].map((x) => x.dataset.act); return b[0] === "resume" && b[1] === "stop"; })()'), 'Reprendre au-dessus de STOP');
   await page.shot('02a-pause');
   await page.click('[data-act="resume"]');
   await page.waitFor('document.querySelector(".sync-ok") && !document.querySelector(".hero.paused") && /Art/.test(document.querySelector(".hero-project").textContent)', 'reprise');

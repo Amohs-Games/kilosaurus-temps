@@ -212,3 +212,22 @@ test('pause du jour : comptée à part, et incluse dans le total', () => {
   assert.equal(L.isPause({ type: 'Pause' }), true);
   assert.equal(L.isPause({ type: 'Dev' }), false);
 });
+
+test('séance : le compteur part du lancement, la pause se cumule, un autre projet ou un trou repart à zéro', () => {
+  const now = at('2026-10-01T11:00:00+02:00');
+  const rows = [
+    sess('old', 'Dev', '2026-10-01T07:00:00+02:00', '2026-10-01T08:00:00+02:00', 'Fluffy'),     // trou de 30 min après
+    sess('a', 'Dev', '2026-10-01T08:30:00+02:00', '2026-10-01T09:00:00+02:00', 'Fluffy'),
+    sess('p1', 'Pause', '2026-10-01T09:00:00+02:00', '2026-10-01T09:10:00+02:00', 'Fluffy'),
+    sess('b', 'Art', '2026-10-01T09:10:00+02:00', '2026-10-01T10:30:00+02:00', 'Fluffy'),
+    sess('p2', 'Pause', '2026-10-01T10:30:00+02:00', null, 'Fluffy'),
+  ];
+  const run = rows[4];
+  const s = L.sessionOf(rows, run, now);
+  assert.equal(s.start, at('2026-10-01T08:30:00+02:00'));
+  assert.equal(s.pauseMs, (10 + 30) * 60000);
+  const other = [sess('x', 'Dev', '2026-10-01T09:00:00+02:00', '2026-10-01T10:00:00+02:00', 'Heirfall'),
+    sess('y', 'Dev', '2026-10-01T10:00:00+02:00', null, 'Fluffy')];
+  assert.equal(L.sessionOf(other, other[1], now).start, at('2026-10-01T10:00:00+02:00'));
+  assert.equal(L.sessionOf([], { start: new Date(now - 60000).toISOString(), type: 'Dev', project: 'Fluffy' }, now).pauseMs, 0);
+});

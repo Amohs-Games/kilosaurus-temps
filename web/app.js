@@ -11,7 +11,7 @@
 
   var L = window.KTLogic;
   var API = window.KT_API_URL;
-  var VERSION = '1.11.0';
+  var VERSION = '1.12.0';
   var TIMEOUT_MS = 25000; // Apps Script répond parfois en 30 s ; l'écran, lui, a déjà réagi.
   var RETRY_MS = 30000;
   var BUSY_RETRY_MS = 5000;
@@ -328,14 +328,17 @@
     var paused = L.isPause(r);
     var t = L.typeOf(r);
     var c = L.typeColor(s, t);
-    // En pause, le compteur continue (la pause fait partie du travail) : on reprend ou on arrête.
+    // Le grand compteur compte la séance depuis son lancement (pauses et changements de tâche
+    // compris) ; dessous, le cumul des pauses de la séance. Pause (ou Reprendre) au-dessus de STOP.
     var stop = '<button class="stop" data-act="stop">' + ICON.stop + 'STOP</button>';
-    var actions = paused
-      ? stop + '<button class="resume" data-act="resume">' + ICON.play + 'Reprendre · ' + esc(state.type) + '</button>'
-      : stop + '<button class="pause" data-act="pause">' + ICON.pause + 'Pause</button>';
+    var actions = (paused
+      ? '<button class="resume" data-act="resume">' + ICON.play + 'Reprendre · ' + esc(state.type) + '</button>'
+      : '<button class="pause" data-act="pause">' + ICON.pause + 'Pause</button>') + stop;
+    var session = L.sessionOf(s.today, r, Date.now());
     return '<section class="hero' + (paused ? ' paused' : '') + '">' +
       '<div class="hero-project">' + esc(r.project) + ' · <span class="pill" style="background:' + c + ';color:' + L.textOn(c) + '">' + esc(t) + '</span></div>' +
-      '<div class="hero-time" id="elapsed">' + L.elapsed(Date.now() - new Date(r.start).getTime()) + '</div>' +
+      '<div class="hero-time" id="elapsed">' + L.elapsed(Date.now() - session.start) + '</div>' +
+      '<div class="hero-pause" id="session-pause">' + sessionPauseText(session) + '</div>' +
       '<div class="hero-actions">' + actions + '</div>' +
       grid(s) +
       '<button class="link note-text" data-act="note">' + (r.note ? esc(r.note) : '+ note') + '</button>' +
@@ -347,6 +350,10 @@
     return '<div class="types">' + L.typesOf(s).filter(function (t) { return t.name !== L.PAUSE_TYPE; }).map(function (t) {
       return '<button class="type' + (t.name === cur ? ' on' : '') + '" style="--c:' + t.color + ';--on:' + L.textOn(t.color) + '" data-act="type" data-t="' + esc(t.name) + '">' + esc(t.name) + '</button>';
     }).join('') + '</div>';
+  }
+
+  function sessionPauseText(session) {
+    return 'Pause ' + L.elapsed(session.pauseMs);
   }
 
   function pauseLabel(s) {
@@ -409,7 +416,12 @@
   function tick() {
     var el = document.getElementById('elapsed');
     var r = state.status && state.status.running;
-    if (el && r) el.textContent = L.elapsed(Date.now() - new Date(r.start).getTime());
+    if (el && r) {
+      var session = L.sessionOf(state.status.today, r, Date.now());
+      el.textContent = L.elapsed(Date.now() - session.start);
+      var sp = document.getElementById('session-pause');
+      if (sp) sp.textContent = sessionPauseText(session);
+    }
     var total = document.getElementById('today-total');
     if (total && state.status) total.textContent = L.duration(L.todayTotal(state.status.today, Date.now()));
     var pause = document.getElementById('today-pause');
