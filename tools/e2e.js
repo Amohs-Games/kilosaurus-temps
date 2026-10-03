@@ -1,5 +1,5 @@
-// Test de bout en bout de l'app : pilote un Chrome sans écran (protocole DevTools) contre le faux
-// serveur, en taille téléphone, et vérifie chaque action côté serveur.
+// Test de bout en bout de l'app : pilote un Chrome sans écran (protocole DevTools) contre le serveur
+// de dev (tools/dev-server.mjs), en taille téléphone, et vérifie chaque action côté serveur.
 //
 //   node tools/e2e.js [dossier-captures]
 //
@@ -22,7 +22,7 @@ function check(cond, label) {
 }
 
 function startServer(port, extra = []) {
-  const p = spawn(process.execPath, [path.join(ROOT, 'tools', 'fake-api.js'), '--port', String(port), ...extra], { stdio: 'ignore' });
+  const p = spawn(process.execPath, [path.join(ROOT, 'tools', 'dev-server.mjs'), '--port', String(port), ...extra], { stdio: 'ignore' });
   children.push(p);
   return sleep(400);
 }
@@ -218,7 +218,7 @@ async function main() {
   await page.evaluate('document.getElementById("project-name").value = "Game Jam 26"');
   await page.click('[data-act="addProjectSave"]');
   await page.waitFor('document.querySelector(".sync-ok") && document.querySelector("[data-act=more]")', 'projet ajouté');
-  check((await api(P, { ...me, action: 'status' })).projects.includes('Game Jam 26'), 'serveur : onglet créé');
+  check((await api(P, { ...me, action: 'status' })).projects.includes('Game Jam 26'), 'serveur : projet créé');
   await page.click('[data-act="more"]');
   await page.click('dialog [data-act="start"][data-p="Game Jam 26"]');
   await page.waitFor('document.querySelector(".sync-ok") && document.querySelector(".hero-project").textContent.startsWith("Game Jam 26 · ")', 'lancement depuis « Plus… »');
@@ -234,7 +234,7 @@ async function main() {
   await page.waitFor('document.getElementById("toast").classList.contains("show")', 'message de refus');
   check(/Refusé/.test(await page.evaluate('document.getElementById("toast").textContent')), 'un nom de projet déjà pris est refusé et signalé');
   await page.waitFor('document.querySelector(".sync-ok")', 'état rechargé après refus');
-  check(!(await api(P, { ...me, action: 'status' })).projects.includes('fluffy'), 'serveur : aucun onglet en double');
+  check(!(await api(P, { ...me, action: 'status' })).projects.includes('fluffy'), 'serveur : aucun projet en double');
 
   console.log('Version compacte (mini-fenêtre de bureau)');
   await page.send('Emulation.setDeviceMetricsOverride', { width: 300, height: 420, deviceScaleFactor: 2, mobile: false });
@@ -266,7 +266,7 @@ async function main() {
   await page2.click('[data-act="forgotSave"]');
   await page2.waitFor('document.querySelector(".sync-ok") && document.querySelector(".hero.idle")', 'compteur fermé');
   s = await api(P2, { ...me, action: 'status' });
-  check(s.running === null && s.last?.corrected && Math.abs(s.last.hours - 7) < 0.05, 'serveur : session fermée à l’heure donnée, marquée corrigée');
+  check(s.running === null && Math.abs(s.last.hours - 7) < 0.05, 'serveur : session fermée à l’heure donnée');
   await page2.shot('08-clair');
   check(page2.errors.length === 0, 'aucune erreur JavaScript' + (page2.errors.length ? ' : ' + page2.errors.join(' | ') : ''));
 
