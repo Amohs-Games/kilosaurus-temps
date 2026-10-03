@@ -26,8 +26,9 @@ Une seule personne utilise l'outil : la notion de personne disparaît du modèle
 2. Chaque sorte d'action annulée remet exactement l'état d'avant (testé).
 3. Le widget affiche le bon état après un redémarrage du téléphone, après minuit, après un
    changement d'heure du téléphone, et sous une série de taps rapides (testé ou vérifié à la main).
-4. Après la reprise de l'historique, le total d'heures par projet et par type est identique à
-   celui de la Sheet, au centième d'heure près.
+4. Après la reprise de l'historique, le nombre de lignes et le total d'heures par projet et par
+   type sont identiques à ceux lus dans la Sheet (lignes écartées exceptées), au centième d'heure
+   près.
 
 ## 1. Hébergement : Cloudflare Workers + D1
 
@@ -85,8 +86,10 @@ Heures stockées en millisecondes UTC ; jours au format `aaaa-mm-jj`, au fuseau 
 Règles posées dans la base :
 
 - `kind = 'session'` ⇒ `start_ms` rempli et `hours` vide ; `kind = 'block'` ⇒ `start_ms` et
-  `end_ms` vides et `hours` dans 2 / 4 / 6 / 8 / 10 / 12.
-- `end_ms > start_ms` et `end_ms − start_ms ≤ 24 h`.
+  `end_ms` vides et `hours` entre 0 et 24 (les blocs repris de l'ancien formulaire ont des durées
+  libres ; l'API, elle, n'accepte que 2 / 4 / 6 / 8 / 10 / 12 pour un nouveau bloc).
+- `end_ms ≥ start_ms` et `end_ms − start_ms ≤ 24 h`. Une session de durée nulle est permise : une
+  bascule avec décalage peut fermer l'ancien compteur à l'heure de son début.
 - **Un seul compteur en cours** : index unique partiel sur les sessions actives sans fin. Deux
   appareils qui lancent en même temps ne peuvent pas créer deux compteurs.
 - Une suppression est douce (`deleted_ms`) : toutes les lectures ignorent les lignes supprimées,
@@ -159,16 +162,21 @@ Nouvelles :
 | `undo` | `opId` | Annule l'action `opId`, à condition qu'elle soit **la dernière action non annulée**. Sinon refus : « Une autre action a eu lieu entre-temps. » |
 | `deleteEntry` | `id` | Supprime une session ou un bloc (suppression douce). Supprimer le compteur en cours l'arrête sans rien compter. |
 | `editEntry` | `id`, `start?`, `end?`, `hours?`, `project?`, `type?`, `note?` | Corrige une ligne. Session : début < fin ≤ maintenant, 24 h au plus, aucun chevauchement ; le jour suit le début. Bloc : heures dans 2 à 12. |
-| `entries` | `from`, `to` (`aaaa-mm-jj`, 62 jours au plus) | Les lignes actives de la période, avec leur `id`, pour la fenêtre des sessions. Lecture seule. |
 
 Retirée : `editLast`, remplacée par `editEntry` (qui corrige n'importe quelle ligne).
+
+La fenêtre des sessions lit ses lignes avec `history` (déjà lecture seule, déjà avec les `id`) :
+pas d'action de lecture en plus.
 
 ### Annuler
 
 - Toute action d'écriture est annulable : `start` (y compris une bascule, qui a fermé le compteur
   d'avant), `stop`, `note`, `logBlock`, `logSession`, `addProject`, `deleteEntry`, `editEntry`.
-- Annuler remet chaque ligne touchée dans son état d'avant (une ligne créée est supprimée), dans
-  une seule transaction, et marque l'action annulée. Annuler à nouveau vise l'action précédente :
+- Annuler remet chaque ligne touchée dans son état d'avant, dans une seule transaction, et marque
+  l'action annulée. Une ligne créée par l'action est marquée supprimée (pas effacée) : son `id`
+  reste pris, donc une requête rejouée après l'annulation ne la recrée pas.
+- Avant de restaurer, le serveur vérifie que chaque ligne est encore dans l'état laissé par
+  l'action ; sinon il refuse. Annuler à nouveau vise l'action précédente :
   on remonte le temps une action à la fois.
 - On n'annule que la dernière action non annulée : ses lignes n'ont pas pu être modifiées depuis,
   donc la restauration est toujours exacte.
@@ -217,7 +225,7 @@ Une fenêtre par-dessus l'app, ouverte par un bouton « Sessions ».
 └──────────────────────────────────┘
 ```
 
-- Un jour à la fois, aujourd'hui à l'ouverture, flèches pour reculer. Chargé par `entries`.
+- Un jour à la fois, aujourd'hui à l'ouverture, flèches pour reculer. Chargé par `history`.
 - Chaque ligne : couleur du type, projet · type, début → fin, durée. Le compteur en cours est
   marqué « en cours ».
 - Une session de plus de 8 h est signalée (⚠) : c'est le cas du bug d'hier.
@@ -277,14 +285,20 @@ Le widget n'a ni annulation ni fenêtre des sessions : il ouvre l'app pour ça.
    onglets, et produit un fichier SQL : projets, réglages, lignes. Une ligne avec Début devient une
    session, sans Début un bloc (Source `report` gardée). Les types anciens (Autre, Narration) sont
    convertis.
-3. Le script refuse de produire le fichier si une ligne est incohérente (fin avant début, session
-   de plus de 24 h, deux sessions qui se chevauchent, bloc hors 2 à 12 h…) et liste ces lignes :
-   elles se corrigent dans la Sheet avant la reprise. La session de 14 h d'hier sera listée ici.
-4. Contrôle : total d'heures par projet et par type, et nombre de lignes, identiques entre la
-   Sheet et le fichier produit. Le script échoue sinon.
-5. `npx wrangler d1 execute <base> --remote --file <fichier.sql>`, puis le même contrôle relu
+3. Le script refuse de produire le fichier si une ligne viole une règle de la base (fin avant
+   début, session de plus de 24 h, deux sessions qui se chevauchent, bloc hors 0 à 24 h, compteur
+   en cours) et liste ces lignes. Chacune se corrige dans la Sheet, ou s'écarte explicitement avec
+   `--exclude <id>`.
+4. Les sessions plus longues que le seuil d'oubli (8 h) sont listées sans bloquer : la session de
+   14 h d'hier en fait partie, et s'écarte avec `--exclude`. Les lignes dont la colonne Heures ne
+   correspond plus à Début / Fin (modifiées à la main) sont listées aussi : la base recalcule la
+   durée depuis Début / Fin.
+5. Contrôle avant envoi (`tools/check_import.mjs`) : le fichier passe les règles de la base dans
+   un SQLite local, et son nombre de lignes et ses totaux par projet et par type égalent ceux
+   calculés par le script.
+6. `npx wrangler d1 execute <base> --remote --file <fichier.sql>`, puis le nombre de lignes relu
    depuis la base.
-6. `_Corrections` n'est pas reprise : le fichier téléchargé est gardé comme archive (jamais
+7. `_Corrections` n'est pas reprise : le fichier téléchargé est gardé comme archive (jamais
    commité).
 
 ## 9. Bascule
