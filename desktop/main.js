@@ -5,6 +5,7 @@
 //
 // Icône près de l'horloge : afficher / masquer, verrouiller la position, toujours au-dessus, lancer
 // au démarrage, ouvrir en grand, quitter. Ctrl + Alt + K affiche ou masque la fenêtre.
+// « Sessions » (barre du haut) ouvre la fenêtre des sessions dans une deuxième fenêtre.
 // Les réglages (position, verrou…) sont gardés dans window.json, dans le dossier de l'app.
 const { app, BrowserWindow, Tray, Menu, screen, shell, nativeImage, ipcMain, globalShortcut, session } = require('electron');
 const fs = require('fs');
@@ -22,6 +23,7 @@ const RETRY_LOAD_MS = 10000;
 let win = null;
 let tray = null;
 let settings = null;
+let sessionsWin = null;
 
 const settingsPath = () => path.join(app.getPath('userData'), 'window.json');
 
@@ -95,9 +97,11 @@ function createWindow() {
     settings.y = b.y;
     saveSettings();
   });
-  // Les liens qui ouvrent une fenêtre (« Plus d'infos ») partent dans Brave, version complète.
+  // « Sessions » ouvre une deuxième fenêtre ; les autres liens (« Plus d'infos ») partent dans
+  // Brave, version complète.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    openInBrowser(url.replace(/[?&]mini=1/, ''));
+    if (/[?&]vue=sessions/.test(url)) openSessionsWindow(url);
+    else openInBrowser(url.replace(/[?&]mini=1/, ''));
     return { action: 'deny' };
   });
 }
@@ -118,6 +122,31 @@ function openInBrowser(url) {
   const exe = candidates.find((p) => fs.existsSync(p));
   if (!exe) { shell.openExternal(url); return; }
   require('child_process').spawn(exe, [url], { detached: true, stdio: 'ignore' }).unref();
+}
+
+// La fenêtre des sessions : une fenêtre normale, au-dessus si la mini-fenêtre l'est. À sa
+// fermeture, la mini-fenêtre relit l'état (une session supprimée ou corrigée s'y voit tout de suite).
+function openSessionsWindow(url) {
+  if (sessionsWin && !sessionsWin.isDestroyed()) {
+    sessionsWin.loadURL(url);
+    sessionsWin.show();
+    sessionsWin.focus();
+    return;
+  }
+  sessionsWin = new BrowserWindow({
+    width: 400,
+    height: 640,
+    title: 'Sessions — Kilosaurus Temps',
+    backgroundColor: '#131316',
+    icon: fs.existsSync(ICON) ? ICON : LOGO,
+    autoHideMenuBar: true,
+    alwaysOnTop: settings.onTop,
+  });
+  sessionsWin.loadURL(url).catch((e) => log('fenêtre des sessions : ' + e.message));
+  sessionsWin.on('closed', () => {
+    sessionsWin = null;
+    if (win) win.webContents.executeJavaScript("window.dispatchEvent(new Event('online'))").catch(() => {});
+  });
 }
 
 function loadSite() {
