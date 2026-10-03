@@ -34,6 +34,9 @@ rm -f "$OUT/extra/assets/web/sw.js"
 # celle d'Api.DEFAULT_URL (une seule source pour l'app et le widget).
 API_URL="$(sed -n 's/.*DEFAULT_URL = "\(.*\)";.*/\1/p' "$HERE/src/com/kilosaurus/temps/Api.java")"
 [ -n "$API_URL" ] || { echo "DEFAULT_URL introuvable dans Api.java" >&2; exit 1; }
+# Une adresse provisoire donnerait un APK qui ne parle à aucune API (et le dépôt automatique le
+# mettrait à la place du bon) : on s'arrête avant de compiler.
+case "$API_URL" in *A_REMPLIR*) echo "Api.DEFAULT_URL est encore provisoire ($API_URL) : renseigne l'adresse du Worker." >&2; exit 1;; esac
 printf "window.KT_API_URL = '%s';\n" "$API_URL" > "$OUT/extra/assets/web/config.js"
 
 "$TOOLS/aapt2$EXE" compile --dir "$HERE/res" -o "$OUT/res.zip"
