@@ -421,3 +421,10 @@ test('status.today : un compteur oublié de plus de 24 h en fait toujours partie
   clock.set('2026-10-01T09:00:00+02:00');
   assert.deepEqual(ok(await call('status')).today.map((r) => r.id), ['f']);
 });
+
+test('oubli : une heure de fin à plus de 24 h du début est refusée avec un message qui le dit', async () => {
+  const { call, clock } = await makeEnv();
+  ok(await call('start', { id: 'a1', project: 'Fluffy' }));
+  clock.set('2026-10-03T09:00:00+02:00');
+  fails(await call('stop', { endAt: '2026-10-02T10:00:00+02:00' }), 'invalid', /au plus 24 h après le début/);
+});

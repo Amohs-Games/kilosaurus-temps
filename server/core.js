@@ -279,6 +279,7 @@ export const actions = {
       end = parseInstant(p.endAt, 'Heure de fin');
       if (end <= run.start_ms) fail('La fin doit être après le début.');
       if (end > ctx.now) fail('La fin ne peut pas être dans le futur.');
+      if (end - run.start_ms > MAX_SESSION_MS) fail('La fin doit être au plus 24 h après le début.');
     } else {
       if (!run) return;
       end = actionTime(ctx);

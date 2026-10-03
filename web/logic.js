@@ -129,6 +129,12 @@
     return Object.keys(out).length ? out : null;
   }
 
+  // Heure de fin la plus tardive pour un compteur oublié : maintenant, mais pas plus de 24 h après
+  // le début (une session ne dépasse pas 24 h).
+  function forgotMax(startIso, nowMs) {
+    return new Date(Math.min(nowMs, new Date(startIso).getTime() + 24 * HOUR));
+  }
+
   // Session plus longue que le seuil d'oubli : sans doute un compteur oublié (signalé ⚠).
   function isLong(row, thresholdHours, nowMs) {
     return !!row.start && rowHours(row, nowMs) > (thresholdHours || 8);
@@ -320,7 +326,7 @@
   var api = {
     BLOCK_HOURS: BLOCK_HOURS, DEFAULT_TYPES: DEFAULT_TYPES, dayKey: dayKey, hoursBetween: hoursBetween,
     elapsed: elapsed, duration: duration, clock: clock, dayLabel: dayLabel,
-    entryEdit: entryEdit, isLong: isLong, visibleProjects: visibleProjects, pickableProjects: pickableProjects,
+    entryEdit: entryEdit, isLong: isLong, forgotMax: forgotMax, visibleProjects: visibleProjects, pickableProjects: pickableProjects,
     isForgotten: isForgotten, applyLocal: applyLocal,
     typesOf: typesOf, typeOf: typeOf, typeColor: typeColor, textOn: textOn, projectColor: projectColor, isPause: isPause, todayPause: todayPause, sessionOf: sessionOf, PAUSE_TYPE: PAUSE_TYPE, rowHours: rowHours, todayTotal: todayTotal,
     dayTimeline: dayTimeline, weekRange: weekRange, monthRange: monthRange, aggregate: aggregate, recapMatches: recapMatches,

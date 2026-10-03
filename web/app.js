@@ -531,7 +531,7 @@
       '<h2>Tu as fini à quelle heure ?</h2>' +
       '<p>Ton compteur <b>' + esc(s.running.project) + '</b> tourne depuis le ' +
       start.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) + ' à ' + L.clock(s.running.start) + '.</p>' +
-      '<input class="field" id="forgot-end" type="datetime-local" min="' + localInputValue(start) + '" max="' + localInputValue(new Date()) + '">' +
+      '<input class="field" id="forgot-end" type="datetime-local" min="' + localInputValue(start) + '" max="' + localInputValue(L.forgotMax(s.running.start, Date.now())) + '">' +
       '<button class="primary" data-act="forgotSave">Valider</button>',
       true
     );
@@ -646,6 +646,7 @@
       var end = new Date(value);
       if (end <= new Date(r.start)) return toast('La fin doit être après le début.');
       if (end > new Date()) return toast('La fin ne peut pas être dans le futur.');
+      if (end > L.forgotMax(r.start, Date.now())) return toast('La fin doit être au plus 24 h après le début.');
       closeDialog();
       act('stop', { endAt: end.toISOString() });
     },

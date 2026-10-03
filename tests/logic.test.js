@@ -246,3 +246,8 @@ test('session anormalement longue : au-delà du seuil d\'oubli', () => {
   assert.equal(L.isLong(sess('b', 'Dev', '2026-10-01T09:00:00+02:00', '2026-10-01T12:00:00+02:00'), 8, now), false);
   assert.equal(L.isLong({ start: null, hours: 10 }, 8, now), false, 'un bloc n\'est jamais signalé');
 });
+
+test('oubli : l\'heure de fin proposée va au plus à 24 h du début, jamais dans le futur', () => {
+  assert.equal(L.forgotMax('2026-10-01T09:00:00+02:00', at('2026-10-03T12:00:00+02:00')).toISOString(), new Date('2026-10-02T09:00:00+02:00').toISOString());
+  assert.equal(L.forgotMax('2026-10-01T09:00:00+02:00', at('2026-10-01T18:00:00+02:00')).toISOString(), new Date('2026-10-01T18:00:00+02:00').toISOString());
+});
