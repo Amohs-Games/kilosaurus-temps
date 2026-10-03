@@ -11,7 +11,7 @@ const { app, BrowserWindow, Tray, Menu, screen, shell, nativeImage, ipcMain, glo
 const fs = require('fs');
 const path = require('path');
 
-const SITE = 'https://amohs-games.github.io/kilosaurus-temps/';
+const SITE = 'https://kilosaurus-temps.kilosaurus-temps.workers.dev/';
 const WIDTH = 300;
 const MARGIN = 12;
 const SHORTCUT = 'Control+Alt+K';

@@ -11,5 +11,4 @@ binding = "ASSETS"
 [[d1_databases]]
 binding = "DB"
 database_name = "kilosaurus-temps"
-# Rempli à la bascule avec l'identifiant affiché par `npx wrangler d1 create`.
-database_id = "A_REMPLIR_A_LA_BASCULE"
+database_id = "ed9c49af-c25b-466d-99ea-70763b77f053"

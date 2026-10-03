@@ -17,7 +17,7 @@ import java.nio.charset.StandardCharsets;
  * suivie à la main, en GET, pour ne dépendre d'aucun comportement implicite de HttpURLConnection.
  */
 final class Api {
-    static final String DEFAULT_URL = "https://A_REMPLIR_A_LA_BASCULE/api";
+    static final String DEFAULT_URL = "https://kilosaurus-temps.kilosaurus-temps.workers.dev/api";
 
     // Le serveur répond en quelques centaines de ms ; au-delà, c'est le réseau du téléphone.
     private static final int CONNECT_TIMEOUT_MS = 5000;
