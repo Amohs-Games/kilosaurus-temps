@@ -99,9 +99,10 @@ public class ConfigActivity extends Activity {
         save.setEnabled(false);
         new Thread(() -> {
             try {
+                int seq = prefs.tapSeq();
                 JSONObject data = Api.call(u, new JSONObject().put("code", c).put("action", "status"));
                 prefs.setAccess(c, u);
-                prefs.saveStatus(data);
+                prefs.saveStatus(data, seq);
                 runOnUiThread(() -> showProjects(data));
             } catch (Api.ApiException e) {
                 final String msg = "unauthorized".equals(e.kind) ? "Code inconnu." : e.getMessage();

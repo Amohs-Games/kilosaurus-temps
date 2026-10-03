@@ -30,6 +30,11 @@ rm -rf "$OUT" && mkdir -p "$OUT/gen" "$OUT/classes" "$OUT/dex" "$OUT/extra/asset
 # L'interface web, servie depuis les assets de l'APK (le service worker ne sert qu'au web).
 cp -r "$ROOT/web/." "$OUT/extra/assets/web/"
 rm -f "$OUT/extra/assets/web/sw.js"
+# L'app embarquée n'est pas servie par le Worker : elle appelle l'API par son adresse complète,
+# celle d'Api.DEFAULT_URL (une seule source pour l'app et le widget).
+API_URL="$(sed -n 's/.*DEFAULT_URL = "\(.*\)";.*/\1/p' "$HERE/src/com/kilosaurus/temps/Api.java")"
+[ -n "$API_URL" ] || { echo "DEFAULT_URL introuvable dans Api.java" >&2; exit 1; }
+printf "window.KT_API_URL = '%s';\n" "$API_URL" > "$OUT/extra/assets/web/config.js"
 
 "$TOOLS/aapt2$EXE" compile --dir "$HERE/res" -o "$OUT/res.zip"
 "$TOOLS/aapt2$EXE" link -o "$OUT/base.apk" -I "$PLATFORM/android.jar" \

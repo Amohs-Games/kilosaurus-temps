@@ -16,6 +16,8 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -24,16 +26,24 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * ■ arrête le compteur en cours, d'où qu'il vienne.
  *
  * Zéro attente : un tap change l'état affiché (Prefs) et met l'action en file, sans réseau. Un seul
- * envoyeur vide la file derrière, dans l'ordre, chaque action avec l'heure de son tap (tapTime).
- * Sans réseau, la file attend : nouvel essai toutes les minutes, à chaque tap et à chaque
- * rafraîchissement. Les chronos sont gérés par Android (Chronometer), sans réveiller l'app.
+ * envoyeur vide la file derrière, dans l'ordre, chaque action avec l'heure de son tap (tapTime, à
+ * l'heure du serveur). Sans réseau, la file attend : nouvel essai toutes les minutes, à chaque tap et
+ * à chaque rafraîchissement.
+ *
+ * Les chronos sont gérés par Android (Chronometer), calés sur le temps écoulé depuis l'allumage du
+ * téléphone. Ce repère repart de zéro au redémarrage, et le total « Aujourd'hui » doit repartir de
+ * zéro à minuit : le widget se redessine donc au démarrage, à un changement d'heure ou de fuseau, et
+ * à minuit (alarme).
  */
 public class WidgetProvider extends AppWidgetProvider {
     static final String ACTION_TOGGLE = "com.kilosaurus.temps.TOGGLE";
     static final String ACTION_REFRESH = "com.kilosaurus.temps.REFRESH";
+    static final String ACTION_MIDNIGHT = "com.kilosaurus.temps.MIDNIGHT";
     static final String WIDGET_TYPE = "Writing";
     static final long RETRY_MS = 60000;
     private static final int RETRY_REQUEST = 0x7fff0000;
+    private static final int MIDNIGHT_REQUEST = 0x7fff0001;
+    private static final int OPEN_APP_REQUEST = 0x7ffe0000;
 
     // LOCK protège la file (lecture-modification-écriture) ; SENDING garantit un seul envoyeur.
     private static final Object LOCK = new Object();
@@ -46,12 +56,20 @@ public class WidgetProvider extends AppWidgetProvider {
             int widgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID);
             toggle(ctx, widgetId);
             background(ctx, () -> send(ctx));
-        } else if (ACTION_REFRESH.equals(action) || AppWidgetManager.ACTION_APPWIDGET_UPDATE.equals(action)) {
+        } else if (ACTION_REFRESH.equals(action) || AppWidgetManager.ACTION_APPWIDGET_UPDATE.equals(action) || isClockEvent(action)) {
             renderAll(ctx);
             background(ctx, () -> refresh(ctx));
+        } else if (ACTION_MIDNIGHT.equals(action)) {
+            renderAll(ctx);
         } else {
             super.onReceive(ctx, intent);
         }
+    }
+
+    /** Événements qui décalent les repères des chronos : démarrage, heure ou fuseau changés, mise à jour de l'app. */
+    private static boolean isClockEvent(String action) {
+        return Intent.ACTION_BOOT_COMPLETED.equals(action) || Intent.ACTION_TIME_CHANGED.equals(action)
+            || Intent.ACTION_TIMEZONE_CHANGED.equals(action) || Intent.ACTION_MY_PACKAGE_REPLACED.equals(action);
     }
 
     private void background(Context ctx, Runnable work) {
@@ -74,7 +92,7 @@ public class WidgetProvider extends AppWidgetProvider {
             if (p.code().isEmpty()) {
                 p.setMessage("Touche le nom du projet pour régler le widget.");
             } else {
-                long now = System.currentTimeMillis();
+                long now = p.serverNow();
                 JSONObject item = new JSONObject();
                 try {
                     if (p.isRunning()) {
@@ -133,7 +151,7 @@ public class WidgetProvider extends AppWidgetProvider {
                         } else {
                             // Réseau, serveur occupé ou bloqué, code refusé : la file attend. Un code
                             // refusé n'est pas renvoyé tout seul : chaque essai compterait comme une
-                            // tentative ratée et bloquerait l'API (Code.gs).
+                            // tentative ratée et bloquerait l'adresse du téléphone.
                             int n = p.queue().length();
                             if ("unauthorized".equals(e.kind)) {
                                 p.setMessage(describe(e));
@@ -157,7 +175,7 @@ public class WidgetProvider extends AppWidgetProvider {
                     }
                     // File vide : l'état du serveur fait foi (saveStatus l'ignore si un tap est arrivé entre-temps).
                     if (empty && data != null) {
-                        p.saveStatus(data);
+                        p.saveStatus(data, p.tapSeq());
                         p.setMessage("");
                         renderAll(ctx);
                     }
@@ -187,9 +205,11 @@ public class WidgetProvider extends AppWidgetProvider {
         renderAll(ctx);
     }
 
+    // Le compteur de taps est noté avant l'envoi : une réponse partie avant un tap est ignorée à son retour.
     private static void fetchStatus(Prefs p) {
+        int seq = p.tapSeq();
         try {
-            p.saveStatus(Api.call(p.url(), new JSONObject().put("code", p.code()).put("action", "status")));
+            p.saveStatus(Api.call(p.url(), new JSONObject().put("code", p.code()).put("action", "status")), seq);
         } catch (Api.ApiException e) {
             // Une mise à jour sans réseau n'est pas une erreur à afficher.
             if (!"network".equals(e.kind) && !"timeout".equals(e.kind)) p.setMessage(describe(e));
@@ -206,9 +226,20 @@ public class WidgetProvider extends AppWidgetProvider {
         am.set(AlarmManager.ELAPSED_REALTIME, SystemClock.elapsedRealtime() + RETRY_MS, pi);
     }
 
+    // Prochain minuit (heure du téléphone), à quelques minutes près : le total du jour repart de zéro.
+    private static void scheduleMidnight(Context ctx) {
+        AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+        if (am == null) return;
+        Intent i = new Intent(ctx, WidgetProvider.class).setAction(ACTION_MIDNIGHT);
+        PendingIntent pi = PendingIntent.getBroadcast(ctx, MIDNIGHT_REQUEST, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        long at = LocalDate.now().plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli() + 5000;
+        am.setAndAllowWhileIdle(AlarmManager.RTC, at, pi);
+    }
+
     static String describe(Api.ApiException e) {
         if ("unauthorized".equals(e.kind)) return "Code refusé : touche le nom du projet pour le corriger.";
         if ("busy".equals(e.kind)) return "Serveur occupé, réessaie.";
+        if ("locked".equals(e.kind)) return "Accès bloqué pour une heure (trop de codes refusés).";
         if ("invalid".equals(e.kind) || "server".equals(e.kind)) return "Refusé : " + e.getMessage();
         return e.getMessage();
     }
@@ -216,13 +247,14 @@ public class WidgetProvider extends AppWidgetProvider {
     static void renderAll(Context ctx) {
         AppWidgetManager mgr = AppWidgetManager.getInstance(ctx);
         for (int id : mgr.getAppWidgetIds(new ComponentName(ctx, WidgetProvider.class))) render(ctx, mgr, id);
+        scheduleMidnight(ctx);
     }
 
     private static void render(Context ctx, AppWidgetManager mgr, int widgetId) {
         Prefs p = new Prefs(ctx);
         RemoteViews v = new RemoteViews(ctx.getPackageName(), R.layout.widget);
         boolean running = p.isRunning();
-        long now = System.currentTimeMillis();
+        long now = p.serverNow();
         long elapsedNow = SystemClock.elapsedRealtime();
 
         // Total du jour = temps déjà fait aujourd'hui + part d'aujourd'hui du compteur en cours.
@@ -242,13 +274,22 @@ public class WidgetProvider extends AppWidgetProvider {
             v.setInt(R.id.button, "setBackgroundResource", R.drawable.btn_play);
         }
 
-        String message = p.message();
+        // Compteur oublié : le message remplace « Aujourd'hui » et ouvre l'app (garde-fou de l'heure de fin).
+        boolean forgotten = running && now - p.runningStart() > p.thresholdMs();
+        String message = forgotten
+            ? "Compteur lancé il y a " + ((now - p.runningStart()) / 3600000L) + " h : touche pour corriger."
+            : p.message();
         v.setTextViewText(R.id.message, message);
         v.setViewVisibility(R.id.message, message.isEmpty() ? View.GONE : View.VISIBLE);
         v.setViewVisibility(R.id.today, message.isEmpty() ? View.VISIBLE : View.GONE);
 
         v.setOnClickPendingIntent(R.id.button, broadcast(ctx, ACTION_TOGGLE, widgetId));
-        v.setOnClickPendingIntent(R.id.message, broadcast(ctx, ACTION_REFRESH, widgetId));
+        PendingIntent messageTap = forgotten
+            ? PendingIntent.getActivity(ctx, OPEN_APP_REQUEST + widgetId,
+                new Intent(ctx, MainActivity.class).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)
+            : broadcast(ctx, ACTION_REFRESH, widgetId);
+        v.setOnClickPendingIntent(R.id.message, messageTap);
         Intent config = new Intent(ctx, ConfigActivity.class)
             .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
             .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);

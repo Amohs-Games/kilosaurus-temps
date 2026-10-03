@@ -17,8 +17,14 @@ import java.time.ZoneId;
  * L'état « compteur en cours » et le total du jour sont ceux de la personne, partagés par tous ses
  * widgets. Le widget change cet état lui-même au tap ; la file `queue` porte les actions pas encore
  * confirmées par le serveur, et tant qu'elle n'est pas vide, l'état du serveur ne l'écrase pas.
+ *
+ * Deux repères évitent de comparer l'horloge du téléphone à celle du serveur :
+ *  - tapSeq compte les taps : un état lu avant un tap n'est jamais appliqué après lui ;
+ *  - clockOffset est l'écart entre les deux horloges, mesuré à chaque réponse : l'heure d'un tap et
+ *    les chronos sont calculés à l'heure du serveur, même si le téléphone avance ou retarde.
  */
 final class Prefs {
+    private static final long HOUR_MS = 3600000L;
     private final SharedPreferences sp;
 
     Prefs(Context ctx) {
@@ -26,9 +32,14 @@ final class Prefs {
     }
 
     String code() { return sp.getString("code", ""); }
-    String url() { return sp.getString("url", Api.DEFAULT_URL); }
     String me() { return sp.getString("me", ""); }
     String message() { return sp.getString("message", ""); }
+
+    /** Adresse de l'API. Celle de la v1 (Apps Script), gardée par un widget réglé avant la v2, est remplacée. */
+    String url() {
+        String u = sp.getString("url", Api.DEFAULT_URL);
+        return u.contains("script.google.com") ? Api.DEFAULT_URL : u;
+    }
 
     void setAccess(String code, String url) {
         sp.edit().putString("code", code.trim()).putString("url", url.trim()).apply();
@@ -52,6 +63,16 @@ final class Prefs {
         sp.edit().remove("project_" + widgetId).apply();
     }
 
+    // ---- Repères ----
+
+    int tapSeq() { return sp.getInt("tapSeq", 0); }
+
+    /** Heure du serveur, estimée : l'horloge du téléphone corrigée de l'écart mesuré à la dernière réponse. */
+    long serverNow() { return System.currentTimeMillis() + sp.getLong("clockOffset", 0); }
+
+    /** Seuil d'oubli (réglage du serveur, 8 h par défaut). */
+    long thresholdMs() { return sp.getLong("thresholdMs", 8 * HOUR_MS); }
+
     // ---- Compteur en cours ----
 
     boolean isRunning() { return sp.getLong("runningStart", 0) > 0; }
@@ -69,7 +90,7 @@ final class Prefs {
     /** Lance le compteur affiché, sans attendre le serveur. */
     void startLocal(String project, String type, long at) {
         sp.edit().putString("runningProject", project).putString("runningType", type).putLong("runningStart", at)
-            .putLong("localChangeAt", at).apply();
+            .putInt("tapSeq", tapSeq() + 1).apply();
     }
 
     /** Arrête le compteur affiché, sans attendre le serveur ; sa part d'aujourd'hui rejoint le total du jour. */
@@ -77,7 +98,7 @@ final class Prefs {
         long from = Math.max(runningStart(), startOfToday());
         long done = todayDoneMs() + Math.max(0, at - from);
         sp.edit().remove("runningProject").remove("runningType").remove("runningStart")
-            .putString("todayKey", todayKey()).putLong("todayDoneMs", done).putLong("localChangeAt", at).apply();
+            .putString("todayKey", todayKey()).putLong("todayDoneMs", done).putInt("tapSeq", tapSeq() + 1).apply();
     }
 
     // ---- Total du jour ----
@@ -106,12 +127,23 @@ final class Prefs {
     // ---- État renvoyé par le serveur ----
 
     /**
-     * Mémorise l'état renvoyé par l'API. Ignoré tant que des actions du widget attendent : il les
-     * précède et effacerait ce que le widget montre.
+     * Mémorise l'état renvoyé par l'API. L'écart d'horloge et le seuil d'oubli sont toujours pris. Le
+     * compteur et le total du jour ne le sont que si aucune action du widget n'attend et qu'aucun tap
+     * n'a eu lieu depuis l'envoi de la requête (seqAtSend) : sinon cet état précède ce que le widget
+     * montre, et l'appliquer rallumerait ou éteindrait le compteur à tort.
      */
-    void saveStatus(JSONObject data) {
+    void saveStatus(JSONObject data, int seqAtSend) {
         SharedPreferences.Editor e = sp.edit().putString("me", data.optString("me", ""));
-        if (queue().length() > 0 || olderThanLocalChange(data)) { e.apply(); return; }
+        String serverTime = data.optString("serverTime", "");
+        if (!serverTime.isEmpty()) {
+            try {
+                e.putLong("clockOffset", Instant.parse(serverTime).toEpochMilli() - System.currentTimeMillis());
+            } catch (RuntimeException ignored) {
+                // Heure illisible : l'écart précédent reste.
+            }
+        }
+        if (data.has("threshold")) e.putLong("thresholdMs", Math.round(data.optDouble("threshold", 8) * HOUR_MS));
+        if (queue().length() > 0 || tapSeq() != seqAtSend) { e.apply(); return; }
         JSONObject running = data.optJSONObject("running");
         if (running != null) {
             e.putString("runningProject", running.optString("project", ""));
@@ -123,21 +155,6 @@ final class Prefs {
         JSONArray today = data.optJSONArray("today");
         if (today != null) e.putString("todayKey", todayKey()).putLong("todayDoneMs", doneMs(today));
         e.apply();
-    }
-
-    /**
-     * Un état calculé par le serveur avant le dernier tap du widget est périmé : une relecture partie
-     * avant un stop, revenue après, rallumerait sinon le compteur (« il se relance tout seul »).
-     * L'heure du serveur (`now`) fait foi ; un état sans heure est accepté.
-     */
-    private boolean olderThanLocalChange(JSONObject data) {
-        String now = data.optString("now", "");
-        if (now.isEmpty()) return false;
-        try {
-            return Instant.parse(now).toEpochMilli() < sp.getLong("localChangeAt", 0);
-        } catch (RuntimeException ex) {
-            return false;
-        }
     }
 
     private static long doneMs(JSONArray today) {

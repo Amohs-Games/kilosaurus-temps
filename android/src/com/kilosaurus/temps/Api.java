@@ -13,18 +13,15 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Appel à l'API Apps Script. Google répond à un POST par une redirection (302) vers l'adresse qui
- * porte la réponse : on suit cette redirection à la main, en GET, pour ne dépendre d'aucun
- * comportement implicite de HttpURLConnection.
+ * Appel à l'API (Worker Cloudflare) : POST JSON en text/plain. Une redirection éventuelle est
+ * suivie à la main, en GET, pour ne dépendre d'aucun comportement implicite de HttpURLConnection.
  */
 final class Api {
-    static final String DEFAULT_URL =
-        "https://script.google.com/macros/s/AKfycbymtz045MJ4nZKm1scGElvtfiyAlb3WPzb9UEm4K_xiylXgADZdrFJsQaOINctJ5rNOKQ/exec";
+    static final String DEFAULT_URL = "https://A_REMPLIR_A_LA_BASCULE/api";
 
-    // Apps Script répond d'habitude en 1 à 4 s, mais monte parfois à 30 s (démarrage à froid, Sheet
-    // occupée). Le widget travaille en arrière-plan (goAsync), il peut se permettre d'attendre.
-    private static final int CONNECT_TIMEOUT_MS = 10000;
-    private static final int READ_TIMEOUT_MS = 20000;
+    // Le serveur répond en quelques centaines de ms ; au-delà, c'est le réseau du téléphone.
+    private static final int CONNECT_TIMEOUT_MS = 5000;
+    private static final int READ_TIMEOUT_MS = 8000;
 
     /** Échec d'appel. kind : network, timeout, http, format, ou le code d'erreur de l'API (unauthorized, invalid, busy, server). */
     static final class ApiException extends Exception {

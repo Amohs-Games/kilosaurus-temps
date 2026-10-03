@@ -121,7 +121,7 @@ public class MainActivity extends Activity {
         public void onStatus(String json) {
             try {
                 Prefs p = new Prefs(MainActivity.this);
-                p.saveStatus(new JSONObject(json));
+                p.saveStatus(new JSONObject(json), p.tapSeq());
                 p.setMessage("");
                 WidgetProvider.renderAll(MainActivity.this);
             } catch (JSONException ignored) {
