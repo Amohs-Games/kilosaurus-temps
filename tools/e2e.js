@@ -208,6 +208,18 @@ async function main() {
   check(h.rows.length === count, 'serveur : la session supprimée est revenue');
   await page.click('dialog [data-act="sessionsClose"]');
 
+  console.log('Fenêtre des sessions seule (mini-fenêtre de bureau)');
+  await page.send('Page.navigate', { url: base + '/?vue=sessions' });
+  await page.waitFor('document.querySelector(".sessions-page .entry")', 'page des sessions');
+  await page.click('.sessions-page .entry:last-child [data-act="entryOpen"]');
+  await page.waitFor('document.getElementById("entry-note")', 'correction ouverte');
+  await page.evaluate('document.getElementById("entry-note").value = "en cours de saisie"');
+  await page.evaluate('window.dispatchEvent(new Event("online"))');
+  await sleep(1500);
+  check(await page.evaluate('(document.getElementById("entry-note") || {}).value === "en cours de saisie"'), 'sessions seules : la relecture n’efface pas une correction en cours');
+  await page.send('Page.navigate', { url: base + '/' });
+  await page.waitFor('document.querySelector(".hero") && document.querySelector(".sync-ok")', 'retour à l’app');
+
   console.log('Bloc');
   await page.click('[data-act="block"][data-v="8"]');
   await page.waitFor('document.querySelector("dialog[open] [data-act=blockSave]")', 'choix du projet');

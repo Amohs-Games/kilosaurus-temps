@@ -244,7 +244,9 @@
     state.status = data;
     if (data && data.running && !L.isPause(data.running)) setType(L.typeOf(data.running));
     saveStatus();
-    render();
+    // Fenêtre des sessions seule : une relecture ne redessine pas la page pendant qu'une ligne est
+    // en correction (la saisie serait perdue). Elle se redessine à la fermeture de la ligne.
+    if (!(VUE_SESSIONS && state.sessions && state.sessions.open)) render();
     native('onStatus', JSON.stringify(data));
   }
 
