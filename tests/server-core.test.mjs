@@ -391,3 +391,33 @@ test('journal : chaque écriture laisse une action annulable, résumée en clair
   assert.equal(s.undo.summary, 'Lancement Fluffy · Writing à 09:00');
   assert.equal(ok(await call('status')).undo.opId, s.undo.opId, 'une lecture n\'écrit rien au journal');
 });
+
+test('lecture de l\'état : aucune requête ne parcourt toute la table (D1 compte les lignes lues)', async () => {
+  const { dayKey } = await import('../server/tz.js');
+  const { call, sqlite, env } = await makeEnv();
+  const ins = sqlite.prepare('INSERT INTO entries (id, project, kind, day, start_ms, end_ms, type, source, created_ms, touched_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  const base = at('2025-01-01T09:00:00+01:00');
+  for (let i = 0; i < 3000; i++) {
+    const s = base + i * 3 * H;
+    ins.run('old' + i, 'Fluffy', 'session', dayKey(s), s, s + H, 'Misc', 'app', s, s);
+  }
+  sqlite.exec('ANALYZE');
+  const seen = [];
+  const all = env.db.all;
+  env.db.all = async (sql, params) => { seen.push([sql, params || []]); return all(sql, params); };
+  ok(await call('status'));
+  const reads = seen.filter(([sql]) => /FROM entries/.test(sql));
+  assert.ok(reads.length > 0);
+  for (const [sql, params] of reads) {
+    const plan = sqlite.prepare('EXPLAIN QUERY PLAN ' + sql).all(...params).map((r) => r.detail).join(' | ');
+    // Ni balayage complet, ni plage ouverte sur le début (qui relit toutes les sessions passées).
+    assert.doesNotMatch(plan, /SCAN entries(?! USING)|\(start_ms<\?\)/, plan);
+  }
+});
+
+test('status.today : un compteur oublié de plus de 24 h en fait toujours partie', async () => {
+  const { call, clock } = await makeEnv({ clock: makeClock('2026-09-29T20:00:00+02:00') });
+  ok(await call('start', { id: 'f', project: 'Fluffy' }));
+  clock.set('2026-10-01T09:00:00+02:00');
+  assert.deepEqual(ok(await call('status')).today.map((r) => r.id), ['f']);
+});

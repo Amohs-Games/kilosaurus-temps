@@ -67,15 +67,20 @@ function last(db) {
   return db.first(`SELECT * FROM entries WHERE ${ACTIVE} AND source <> 'report' AND NOT (kind = 'session' AND end_ms IS NULL) ORDER BY touched_ms DESC LIMIT 1`);
 }
 // Lignes qui touchent aujourd'hui : sessions qui chevauchent la journée (en cours comprises), blocs du jour.
-function today(db, nowMs) {
+// Une session terminée dure 24 h au plus : elle a commencé la veille au plus tôt, d'où la borne sur
+// `day` (index) qui évite de relire tout l'historique — D1 facture chaque ligne lue. Seul le compteur
+// en cours peut être plus ancien (oublié) : il est ajouté à part.
+async function today(db, nowMs, run) {
   const key = dayKey(nowMs);
   const from = dayStart(key);
   const to = nextDayStart(from);
-  return db.all(
-    `SELECT * FROM entries WHERE ${ACTIVE} AND ((kind = 'session' AND start_ms < ? AND COALESCE(end_ms, ?) > ?) OR (kind = 'block' AND day = ?))
+  const rows = await db.all(
+    `SELECT * FROM entries WHERE ${ACTIVE} AND day >= ? AND ((kind = 'session' AND start_ms < ? AND COALESCE(end_ms, ?) > ?) OR (kind = 'block' AND day = ?))
      ORDER BY day, start_ms IS NULL, start_ms`,
-    [to, nowMs, from, key],
+    [dayKey(from - MAX_SESSION_MS), to, nowMs, from, key],
   );
+  if (run && run.start_ms < to && !rows.some((r) => r.id === run.id)) rows.unshift(run);
+  return rows;
 }
 async function projectNames(db) { return (await db.all('SELECT name FROM projects ORDER BY position')).map((r) => r.name); }
 async function settings(db) {
@@ -102,8 +107,9 @@ export function toApi(r) {
 
 async function status(ctx) {
   const { db } = ctx;
-  const [cfg, projects, run, lastRow, todayRows, undo] = await Promise.all([
-    settings(db), projectNames(db), running(db), last(db), today(db, ctx.now), undoTarget(db),
+  const run = await running(db);
+  const [cfg, projects, lastRow, todayRows, undo] = await Promise.all([
+    settings(db), projectNames(db), last(db), today(db, ctx.now, run), undoTarget(db),
   ]);
   return {
     me: cfg.me || '',
