@@ -1,27 +1,27 @@
 ---
 name: kilosaurus-temps
-description: Loguer du temps de travail dans Kilosaurus Temps (la feuille de temps de l'utilisateur) pour l'utilisateur. À utiliser quand l'utilisateur demande de loguer, déclarer, compter ou noter du temps passé sur un projet, de lancer ou d'arrêter son compteur, ou de corriger son dernier log.
+description: Loguer du temps de travail dans Kilosaurus Temps (la feuille de temps de l'utilisateur) pour l'utilisateur. À utiliser quand l'utilisateur demande de loguer, déclarer, compter ou noter du temps passé sur un projet, de lancer ou d'arrêter son compteur, de corriger, supprimer ou annuler un log.
 ---
 
 # Kilosaurus Temps — loguer du temps
 
-Kilosaurus Temps enregistre le temps de travail par projet dans une Google Sheet, via une API
+Kilosaurus Temps enregistre le temps de travail par projet dans une base de données, via une API
 JSON. Tu loges **au nom de ton utilisateur**, avec son code d'agent : chaque ligne que tu écris est
-marquée « claude » dans la Sheet.
+marquée « claude ».
 
 ## Configuration
 
 Deux variables d'environnement, fournies par l'utilisateur :
 
-- `KILOSAURUS_TEMPS_URL` — URL de l'API (se termine par `/exec`).
+- `KILOSAURUS_TEMPS_URL` — URL de l'API (se termine par `/api`).
 - `KILOSAURUS_TEMPS_CODE` — son code d'agent. Ne l'affiche jamais, ne l'écris dans aucun fichier.
 
 Si l'une manque, arrête-toi et demande-la à l'utilisateur.
 
 ## Appeler l'API
 
-Toujours un POST, corps JSON, `Content-Type: text/plain`, en suivant les redirections (`-L` : Google
-répond par une redirection). Sous PowerShell, utilise `curl.exe`, pas `curl`.
+Toujours un POST, corps JSON, `Content-Type: text/plain`. Sous PowerShell, utilise `curl.exe`, pas
+`curl`.
 
 ```bash
 curl -sL -H 'Content-Type: text/plain' \
@@ -31,12 +31,13 @@ curl -sL -H 'Content-Type: text/plain' \
 
 Réponse : `{"ok":true,"data":{…}}`, ou `{"ok":false,"error":{"code":"…","message":"…"}}`.
 `unauthorized` = code refusé : préviens l'utilisateur. `invalid` = demande refusée : lis le message,
-corrige, ou explique-le à l'utilisateur. `busy` = réessaie dans quelques secondes. `locked` =
-l'API est bloquée après trop de codes refusés : n'insiste pas, préviens l'utilisateur.
+corrige, ou explique-le à l'utilisateur. `busy` = réessaie dans quelques secondes. `locked` = cette
+adresse est bloquée une heure après trop de codes refusés : n'insiste pas, préviens l'utilisateur.
 
 Chaque action renvoie l'état à jour (`data`) : `projects` (projets existants), `running` (compteur
-en cours), `last` (dernier log), `today` (lignes du jour), `types` (types de travail). Seule
-exception : `history` renvoie `{ from, to, rows }`.
+en cours), `last` (dernier log), `today` (lignes du jour), `types` (types de travail), `undo` (la
+dernière action annulable, `{ opId, summary }`). Seule exception : `history` renvoie
+`{ from, to, rows }`.
 
 ## Commence par `status`
 
@@ -52,10 +53,12 @@ réunions…). Si le projet demandé n'existe pas, demande à l'utilisateur plut
 | `logBlock` | `id`, `project`, `hours` (2, 4, 6, 8, 10 ou 12), `date?` (`aaaa-mm-jj`), `type?`, `note?` | Un bloc d'heures sur une journée, sans heures précises. |
 | `start` | `id`, `project`, `type?`, `note?` | Lance le compteur (ferme celui en cours). Sans `type`, garde celui du compteur en cours. |
 | `stop` | — | Arrête le compteur. |
-| `editLast` | `id`, `field` (`start`, `end` ou `hours`), `value` | Corrige le dernier log (et seulement lui). |
-| `history` | `from`, `to` (`aaaa-mm-jj`, 62 jours max) | Les lignes de l'utilisateur sur la période, pour faire un bilan. Ne modifie rien. |
+| `history` | `from`, `to` (`aaaa-mm-jj`, 62 jours max) | Les lignes de l'utilisateur sur la période, avec leur `id`, pour faire un bilan ou retrouver une ligne. Ne modifie rien. |
+| `editEntry` | `id`, `start?`, `end?`, `hours?`, `project?`, `type?`, `note?` | Corrige une ligne (trouvée avec `history`). Session : début < fin ≤ maintenant, 24 h au plus, sans chevauchement. Bloc : heures 2 à 12. |
+| `deleteEntry` | `id` | Supprime une ligne (elle revient avec `undo`). |
+| `undo` | `opId` | Annule la dernière action (`status.undo.opId`), puis la précédente au prochain appel. Refusé si une autre action a eu lieu entre-temps. |
 
-`type` : `Misc` (défaut), `Art`, `Dev` ou `Writing` (liste dans `data.types`). Choisis-le d'après
+`type` : `Misc` (défaut), `Art`, `Dev`, `Writing`… (liste dans `data.types`). Choisis-le d'après
 la demande (« j'ai codé » → Dev, « j'ai dessiné » → Art, « j'ai écrit les dialogues » →
 Writing) ; dans le doute, demande.
 
@@ -88,5 +91,5 @@ curl -sL -H 'Content-Type: text/plain' -d "{
 ## Après chaque écriture
 
 Dis à l'utilisateur, en une ligne, ce qui a été logué : projet, jour, heures, durée. Si la demande
-était ambiguë (projet, heures, jour), demande avant d'écrire : une ligne fausse se corrige, mais
-seulement tant qu'elle est le dernier log.
+était ambiguë (projet, heures, jour), demande avant d'écrire. Une erreur se corrige avec
+`editEntry`, ou s'annule avec `undo` tant que c'est la dernière action.
