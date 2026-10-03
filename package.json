@@ -1,9 +1,14 @@
 {
   "name": "kilosaurus-temps",
   "private": true,
-  "description": "Outils de dev : tests et faux serveur local. L'app elle-même n'a aucune dépendance.",
+  "description": "Outils de dev : tests, serveur local, déploiement Cloudflare. L'app elle-même n'a aucune dépendance.",
   "scripts": {
     "test": "node --test \"tests/*.test.js\" \"tests/*.test.mjs\"",
-    "dev": "node tools/fake-api.js"
+    "dev": "node tools/dev-server.mjs",
+    "deploy": "wrangler deploy",
+    "db:schema": "wrangler d1 execute kilosaurus-temps --remote --file server/schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
   }
 }

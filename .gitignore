@@ -1,5 +1,10 @@
 # Données réelles (heures, emails) : jamais dans le dépôt, qui est public pour GitHub Pages.
 *.xlsx
+# Fichiers de reprise de l'historique (données réelles).
+reprise*.sql
+reprise*.json
+# Cache local de wrangler.
+.wrangler/
 ~$*
 
 node_modules/

@@ -1,0 +1,15 @@
+# Worker Cloudflare de Kilosaurus Temps : l'API (server/worker.js) et l'app (web/).
+#   npx wrangler deploy
+name = "kilosaurus-temps"
+main = "server/worker.js"
+compatibility_date = "2025-09-01"
+
+[assets]
+directory = "web"
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "kilosaurus-temps"
+# Rempli à la bascule avec l'identifiant affiché par `npx wrangler d1 create`.
+database_id = "A_REMPLIR_A_LA_BASCULE"
