@@ -222,6 +222,21 @@ export async function commit(ctx, action, summary, changes) {
   await ctx.db.batch(stmts);
 }
 
+// Phrase lisible d'une ligne, pour le journal : « Fluffy · Dev 01/10 09:00 → 10:30 », « bloc 4 h Fluffy (01/10) ».
+function describe(r) {
+  if (r.kind === 'block') {
+    const [, m, d] = r.day.split('-');
+    return `bloc ${r.hours} h ${r.project} (${d}/${m})`;
+  }
+  return `${r.project} · ${typeOf(r)} ${shortDate(r.start_ms)} ${clock(r.start_ms)} → ${r.end_ms == null ? 'en cours' : clock(r.end_ms)}`;
+}
+
+// La ligne est-elle encore dans l'état laissé par l'action ? (champs de `expected` seulement)
+function sameRow(current, expected) {
+  if (!current || !expected) return !current && !expected;
+  return Object.keys(expected).every((k) => (current[k] ?? null) === (expected[k] ?? null));
+}
+
 // ---- Actions ----
 
 export const actions = {
@@ -317,6 +332,70 @@ export const actions = {
     if (taken) fail('Ce nom est déjà pris : ' + name);
     const { position } = await ctx.db.first('SELECT COALESCE(MAX(position), 0) + 1 AS position FROM projects');
     await commit(ctx, 'addProject', `Projet ${name} créé`, [{ table: 'projects', key: name, before: null, after: { name, position } }]);
+  },
+
+  async deleteEntry(ctx, p) {
+    const row = typeof p.id === 'string' ? await byId(ctx.db, p.id) : null;
+    if (!row) fail('Ligne introuvable.');
+    if (row.deleted_ms != null) return;
+    await commit(ctx, 'deleteEntry', `Suppression ${describe(row)}`, [change(row, { ...row, deleted_ms: ctx.now, touched_ms: ctx.now })]);
+  },
+
+  async editEntry(ctx, p) {
+    const row = typeof p.id === 'string' ? await byId(ctx.db, p.id) : null;
+    if (!row || row.deleted_ms != null) fail('Ligne introuvable.');
+    const next = { ...row };
+    if (p.project !== undefined) next.project = await requireProject(ctx, p.project);
+    if (p.type !== undefined) next.type = requireType(p.type, typeOf(row));
+    if (p.note !== undefined) next.note = cleanNote(p.note);
+    if (row.kind === 'block') {
+      if (p.start !== undefined || p.end !== undefined) fail('Un bloc n’a ni début ni fin : corrige ses heures.');
+      if (p.hours !== undefined) next.hours = requireBlockHours(p.hours);
+    } else {
+      if (p.hours !== undefined) fail('Pour une session, corrige le début ou la fin.');
+      if (p.start !== undefined) next.start_ms = parseInstant(p.start, 'Début');
+      if (p.end !== undefined) {
+        if (row.end_ms == null) fail('Pour arrêter le compteur en cours, utilise STOP.');
+        next.end_ms = parseInstant(p.end, 'Fin');
+      }
+      const end = next.end_ms ?? ctx.now;
+      if (next.start_ms > ctx.now) fail('Le début ne peut pas être dans le futur.');
+      if (next.end_ms != null && next.end_ms <= next.start_ms) fail('La fin doit être après le début.');
+      if (next.end_ms != null && next.end_ms > ctx.now) fail('La fin ne peut pas être dans le futur.');
+      if (end - next.start_ms > MAX_SESSION_MS) fail('Une session ne peut pas dépasser 24 h.');
+      next.day = dayKey(next.start_ms);
+      if (next.start_ms !== row.start_ms || next.end_ms !== row.end_ms) {
+        const o = await overlapping(ctx, next.start_ms, end, row.id);
+        if (o) fail(`Chevauche une autre session (${o.project}, ${shortDate(o.start_ms)} ${clock(o.start_ms)}).`);
+      }
+    }
+    if (['project', 'type', 'note', 'hours', 'start_ms', 'end_ms', 'day'].every((f) => next[f] === row[f])) return;
+    next.touched_ms = ctx.now;
+    await commit(ctx, 'editEntry', `Correction ${describe(next)}`, [change(row, next)]);
+  },
+
+  // Annule l'action opId, si c'est la dernière non annulée. Les changements sont défaits dans l'ordre
+  // inverse (une bascule : d'abord retirer le nouveau compteur, puis rouvrir l'ancien).
+  async undo(ctx, p) {
+    const opId = Number(p.opId);
+    if (!Number.isInteger(opId)) fail('Action à annuler manquante.');
+    const op = await ctx.db.first('SELECT * FROM ops WHERE id = ?', [opId]);
+    if (!op) fail('Action introuvable.');
+    if (op.undone_ms != null) return; // déjà annulée : une requête rejouée ne fait rien
+    const latest = await undoTarget(ctx.db);
+    if (!latest || latest.id !== opId) fail('Une autre action a eu lieu entre-temps : rien n’est annulé.');
+    const stmts = [];
+    for (const c of JSON.parse(op.changes).reverse()) {
+      const current = c.table === 'projects'
+        ? await ctx.db.first('SELECT name, position FROM projects WHERE name = ?', [c.key])
+        : plain(await byId(ctx.db, c.key));
+      if (!sameRow(current, c.after)) fail('La ligne a changé depuis : rien n’est annulé.');
+      // Une ligne créée par l'action est marquée supprimée : son id reste pris (idempotence).
+      const restore = c.table === 'entries' && !c.before ? { ...c.after, deleted_ms: ctx.now } : c.before;
+      stmts.push(writeRow(c.table, c.key, restore));
+    }
+    stmts.push({ sql: 'UPDATE ops SET undone_ms = ? WHERE id = ?', params: [ctx.now, opId] });
+    await ctx.db.batch(stmts);
   },
 
   // Lecture seule : renvoie les lignes de la période au lieu de l'état.
