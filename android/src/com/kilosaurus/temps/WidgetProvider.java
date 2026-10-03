@@ -259,17 +259,24 @@ public class WidgetProvider extends AppWidgetProvider {
 
         // Total du jour = temps déjà fait aujourd'hui + part d'aujourd'hui du compteur en cours.
         long today = p.todayDoneMs() + (running ? Math.max(0, now - Math.max(p.runningStart(), Prefs.startOfToday())) : 0);
-        v.setChronometer(R.id.today, elapsedNow - today, "Aujourd'hui %s", running);
 
+        // Compteur en cours : chronos d'Android (ils avancent sans réveiller l'app). À l'arrêt : textes
+        // fixes, car un chrono arrêté redessiné par le lanceur repartirait de son dernier affichage.
+        v.setViewVisibility(R.id.chrono, running ? View.VISIBLE : View.GONE);
+        v.setViewVisibility(R.id.chrono_idle, running ? View.GONE : View.VISIBLE);
         if (running) {
             v.setTextViewText(R.id.title, p.runningProject() + " · " + p.runningType());
             v.setChronometer(R.id.chrono, elapsedNow - (now - p.runningStart()), null, true);
+            v.setChronometer(R.id.today, elapsedNow - today, "Aujourd'hui %s", true);
             v.setTextViewText(R.id.button, "■");
             v.setInt(R.id.button, "setBackgroundResource", R.drawable.btn_stop);
         } else {
             String project = p.widgetProject(widgetId);
             v.setTextViewText(R.id.title, project.isEmpty() ? "Choisir un projet" : project + " · " + WIDGET_TYPE);
             v.setChronometer(R.id.chrono, elapsedNow, null, false);
+            v.setChronometer(R.id.today, elapsedNow, null, false);
+            v.setTextViewText(R.id.chrono_idle, "00:00");
+            v.setTextViewText(R.id.today_idle, "Aujourd'hui " + clockText(today));
             v.setTextViewText(R.id.button, "▶");
             v.setInt(R.id.button, "setBackgroundResource", R.drawable.btn_play);
         }
@@ -281,8 +288,13 @@ public class WidgetProvider extends AppWidgetProvider {
             : p.message();
         v.setTextViewText(R.id.message, message);
         v.setViewVisibility(R.id.message, message.isEmpty() ? View.GONE : View.VISIBLE);
-        v.setViewVisibility(R.id.today, message.isEmpty() ? View.VISIBLE : View.GONE);
+        v.setViewVisibility(R.id.today, message.isEmpty() && running ? View.VISIBLE : View.GONE);
+        v.setViewVisibility(R.id.today_idle, message.isEmpty() && !running ? View.VISIBLE : View.GONE);
 
+        // Un appui sur le widget (hors bouton, nom du projet et message) ouvre l'app.
+        v.setOnClickPendingIntent(R.id.root, PendingIntent.getActivity(ctx, OPEN_APP_REQUEST + widgetId,
+            new Intent(ctx, MainActivity.class).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
         v.setOnClickPendingIntent(R.id.button, broadcast(ctx, ACTION_TOGGLE, widgetId));
         PendingIntent messageTap = forgotten
             ? PendingIntent.getActivity(ctx, OPEN_APP_REQUEST + widgetId,
@@ -297,6 +309,14 @@ public class WidgetProvider extends AppWidgetProvider {
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
 
         mgr.updateAppWidget(widgetId, v);
+    }
+
+    /** Durée au format des chronos d'Android : « 12:05 », « 1:02:05 ». */
+    static String clockText(long ms) {
+        long s = Math.max(0, ms / 1000);
+        long h = s / 3600, m = (s % 3600) / 60, sec = s % 60;
+        return h > 0 ? String.format(java.util.Locale.ROOT, "%d:%02d:%02d", h, m, sec)
+            : String.format(java.util.Locale.ROOT, "%02d:%02d", m, sec);
     }
 
     // Codes de requête distincts par widget et par action : sinon Android réutilise le même intent.

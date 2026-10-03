@@ -39,12 +39,32 @@
             android:textSize="24sp"
             android:textStyle="bold" />
 
+        <!-- À l'arrêt : texte fixe. Un Chronometer arrêté que le lanceur redessine plus tard compte le
+             temps écoulé depuis son dernier affichage (« 00:12 » alors que rien ne tourne). -->
+        <TextView
+            android:id="@+id/chrono_idle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/fg"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:text="00:00"
+            android:visibility="gone" />
+
         <Chronometer
             android:id="@+id/today"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textColor="@color/muted"
             android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/today_idle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/muted"
+            android:textSize="12sp"
+            android:visibility="gone" />
 
         <TextView
             android:id="@+id/message"
