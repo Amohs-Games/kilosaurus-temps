@@ -131,9 +131,6 @@ Au premier lancement, l'app demande le code de l'appareil. Elle le garde ensuite
 - **⏸ Pause** : le compteur continue, marqué pause (même projet) ; **▶ Reprendre** revient à la
   tâche d'avant. Les pauses comptent dans le total du jour (« dont N min de pause »), sont hachurées
   sur la frise et ont leur ligne dans les récaps.
-- **↶ Annuler** : défait la dernière action (lancement, arrêt, bascule, bloc, suppression,
-  correction), résumée sur le bouton. Un nouvel appui défait l'action d'avant, et ainsi de suite.
-  Annuler un arrêt rouvre le compteur : la session compte le temps écoulé depuis. Demande le réseau.
 - **Sessions** : un jour à la fois, avec des flèches pour reculer. Un tap sur une ligne permet de la
   supprimer, ou de corriger son début, sa fin, son projet, son type ou sa note. ⚠ signale une
   session plus longue que le seuil d'oubli (8 h). Demande le réseau.

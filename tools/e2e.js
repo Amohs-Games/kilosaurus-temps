@@ -142,6 +142,10 @@ async function main() {
   check(!(await page.evaluate('!!document.querySelector("[data-act=type][data-t=Pause]")')), 'la pause n’est pas une tâche à choisir');
   check(/^Pause \d+:\d\d:\d\d$/.test(await page.evaluate('document.getElementById("session-pause").textContent')), 'le cumul des pauses s’affiche sous le compteur');
   check(await page.evaluate('(() => { const b = [...document.querySelectorAll(".hero-actions button")].map((x) => x.dataset.act); return b[0] === "resume" && b[1] === "stop"; })()'), 'Reprendre au-dessus de STOP');
+  await page.evaluate('document.getElementById("timeline").innerHTML = ""');
+  await page.evaluate('window.dispatchEvent(new Event("online"))');
+  await page.waitFor('document.querySelector("#timeline .seg")', 'frise redessinée');
+  check(await page.evaluate('(() => { const t = document.getElementById("timeline").getBoundingClientRect(); return [...document.querySelectorAll("#timeline .seg")].every((g) => { const r = g.getBoundingClientRect(); return r.top >= t.top - 1 && r.bottom <= t.bottom + 1; }); })()'), 'frise : aucun segment (pause comprise) ne dépasse');
   await page.shot('02a-pause');
   await page.click('[data-act="resume"]');
   await page.waitFor('document.querySelector(".sync-ok") && !document.querySelector(".hero.paused") && /Art/.test(document.querySelector(".hero-project").textContent)', 'reprise');
@@ -173,13 +177,8 @@ async function main() {
   await page.click('[data-act="stop"]');
   await page.waitFor('document.querySelector(".hero.idle") && document.querySelector(".sync-ok")', 'arrêt');
 
-  console.log('Annuler');
-  await page.click('[data-act="start"][data-p="Fluffy"]');
-  await page.waitFor('document.querySelector(".sync-ok") && document.querySelector("[data-act=undo]:not([disabled])")', 'bouton Annuler');
-  check(/Lancement Fluffy/.test(await page.evaluate('(document.querySelector("[data-act=undo]") || {}).textContent || ""')), 'Annuler dit ce qu’il défait');
-  await page.click('[data-act="undo"]');
-  await page.waitFor('document.querySelector(".hero.idle") && document.querySelector(".sync-ok")', 'lancement annulé');
-  check((await api(P, { ...me, action: 'status' })).running === null, 'serveur : le lancement annulé ne laisse rien');
+  console.log('Pas de bouton Annuler (corrections par Sessions)');
+  check(!(await page.evaluate('!!document.querySelector("[data-act=undo]")')), 'aucun bouton Annuler');
 
   console.log('Fenêtre des sessions');
   const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
@@ -202,10 +201,9 @@ async function main() {
   await page.click('dialog .sessions .entry:last-child [data-act="entryOpen"]');
   await page.click('dialog [data-act="entryDelete"]');
   await page.waitFor(`document.querySelectorAll("dialog .sessions .entry").length === ${count - 1}`, 'session supprimée');
-  await page.click('dialog [data-act="undo"]');
-  await page.waitFor(`document.querySelectorAll("dialog .sessions .entry").length === ${count}`, 'suppression annulée');
   h = await api(P, { ...me, action: 'history', from: todayKey, to: todayKey });
-  check(h.rows.length === count, 'serveur : la session supprimée est revenue');
+  check(h.rows.length === count - 1, 'serveur : la session est supprimée');
+  check(!(await page.evaluate('!!document.querySelector("dialog [data-act=undo]")')), 'sessions : aucun bouton Annuler');
   await page.click('dialog [data-act="sessionsClose"]');
 
   console.log('Fenêtre des sessions seule (mini-fenêtre de bureau)');

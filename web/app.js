@@ -52,7 +52,6 @@
     showStudio: load(KEYS.studio) === '1',
     recap: null,
     sessions: null,    // fenêtre des sessions : { day, rows, error, open }
-    undoing: false,
     latencyMs: null,   // durée du dernier appel, affichée dans le détail de la synchro
   };
 
@@ -135,11 +134,10 @@
     flush();
   }
 
-  // Action qui demande le réseau (annuler, supprimer, corriger) : envoyée tout de suite, hors de
+  // Action qui demande le réseau (supprimer, corriger) : envoyée tout de suite, hors de
   // la file, et l'écran attend la réponse du serveur, qui fait foi.
   function direct(body, doneMsg) {
     return post(Object.assign({ code: state.code }, body)).then(function (res) {
-      state.undoing = false;
       if (res.ok) {
         setStatus(res.data);
         setSync('ok');
@@ -152,7 +150,6 @@
       }
       if (state.sessions) loadSessions();
     }).catch(function (err) {
-      state.undoing = false;
       rethrowIfBug(err);
       toast('Pas envoyé : ' + failureMessage(err));
       render();
@@ -363,7 +360,7 @@
       return '<section class="hero idle">' +
         '<div class="hero-project">Rien en cours</div>' +
         '<div class="hero-time">0:00:00</div>' +
-        grid(s) + undoButton(s) +
+        grid(s) +
         '</section>';
     }
     var paused = L.isPause(r);
@@ -381,17 +378,9 @@
       '<div class="hero-time" id="elapsed">' + L.elapsed(Date.now() - session.start) + '</div>' +
       '<div class="hero-pause" id="session-pause">' + sessionPauseText(session) + '</div>' +
       '<div class="hero-actions">' + actions + '</div>' +
-      grid(s) + undoButton(s) +
+      grid(s) +
       '<button class="link note-text" data-act="note">' + (r.note ? esc(r.note) : '+ note') + '</button>' +
       '</section>';
-  }
-
-  // Annuler : la dernière action, résumée. Grisé tant qu'une action attend dans la file : l'action
-  // à annuler est celle que le serveur connaît, pas celle qui n'est pas encore partie.
-  function undoButton(s) {
-    if (!s.undo) return '';
-    var off = state.queue.length > 0 || state.undoing;
-    return '<button class="link undo" data-act="undo"' + (off ? ' disabled' : '') + '>↶ Annuler : ' + esc(s.undo.summary) + '</button>';
   }
 
   function typeBar(s) {
@@ -424,7 +413,7 @@
     var span = Math.max(tl.to - tl.from, 60000);
     var pct = function (ms) { return ((ms - tl.from) / span * 100).toFixed(2) + '%'; };
     var html = tl.segments.map(function (g) {
-      return '<span class="seg' + (g.type === L.PAUSE_TYPE ? ' pause' : '') + '" style="left:' + pct(g.start) + ';width:' + (((g.end - g.start) / span) * 100).toFixed(2) + '%;background-color:' + L.typeColor(s, g.type) + '"></span>';
+      return '<span class="seg' + (g.type === L.PAUSE_TYPE ? ' seg-pause' : '') + '" style="left:' + pct(g.start) + ';width:' + (((g.end - g.start) / span) * 100).toFixed(2) + '%;background-color:' + L.typeColor(s, g.type) + '"></span>';
     }).join('');
     var h = new Date(tl.from);
     h.setMinutes(0, 0, 0);
@@ -704,15 +693,6 @@
       render();
     },
 
-    undo: function () {
-      var s = state.status;
-      if (!s.undo || state.queue.length || state.undoing) return;
-      state.undoing = true;
-      render();
-      renderSessions();
-      direct({ action: 'undo', opId: s.undo.opId }, 'Annulé : ' + s.undo.summary);
-    },
-
     sessions: function () {
       // Mini-fenêtre : les sessions s'ouvrent dans une deuxième fenêtre (desktop/main.js).
       if (MINI) { window.open('./?vue=sessions', 'sessions'); return; }
@@ -729,7 +709,7 @@
     },
 
     entryDelete: function (el) {
-      if (!window.confirm('Supprimer cette ligne ? « Annuler » la fera revenir.')) return;
+      if (!window.confirm('Supprimer cette ligne ?')) return;
       state.sessions.open = null;
       direct({ action: 'deleteEntry', id: el.dataset.id }, 'Supprimé.');
     },
@@ -911,7 +891,7 @@
     }
     var isToday = ss.day === L.dayKey(new Date());
     return '<div class="sessions">' +
-      '<div class="sessions-head"><h2>Sessions</h2>' + undoButton(s) + '</div>' +
+      '<div class="sessions-head"><h2>Sessions</h2></div>' +
       '<div class="recap-nav"><button class="icon" data-act="sessionsPrev" aria-label="Jour précédent">‹</button>' +
       '<h2>' + esc(label.charAt(0).toUpperCase() + label.slice(1)) + '</h2>' +
       '<button class="icon" data-act="sessionsNext" aria-label="Jour suivant"' + (isToday ? ' disabled' : '') + '>›</button></div>' +

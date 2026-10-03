@@ -10,8 +10,9 @@
   au lieu d'une à plusieurs secondes avec Apps Script.
 - **Solidité** : les règles de cohérence vivent dans la base (un seul compteur en cours, une
   session a une fin après son début, 24 h au plus), plus seulement dans le code.
-- **Annuler** : un bouton annule la dernière action (lancement, arrêt, bascule, bloc, suppression,
-  correction), puis celle d'avant, et ainsi de suite.
+- **Annuler** : l'API sait annuler la dernière action, puis celle d'avant (utilisé par l'agent).
+  L'app n'a pas de bouton Annuler : les corrections passent par la fenêtre des sessions, plus sûre
+  qu'un retour en arrière à l'aveugle.
 - **Fenêtre des sessions** : une fenêtre qui s'ouvre partout (app web, app du téléphone,
   mini-fenêtre du PC) liste les sessions, permet d'en choisir une, de la supprimer ou de la
   corriger.
@@ -169,7 +170,10 @@ Retirée : `editLast`, remplacée par `editEntry` (qui corrige n'importe quelle 
 La fenêtre des sessions lit ses lignes avec `history` (déjà lecture seule, déjà avec les `id`) :
 pas d'action de lecture en plus.
 
-### Annuler
+### Annuler (API)
+
+Pas de bouton dans l'app (les corrections passent par la fenêtre des sessions) ; l'action reste
+dans l'API, pour l'agent.
 
 - Toute action d'écriture est annulable : `start` (y compris une bascule, qui a fermé le compteur
   d'avant), `stop`, `note`, `logBlock`, `logSession`, `addProject`, `deleteEntry`, `editEntry`.
@@ -200,8 +204,6 @@ pas d'action de lecture en plus.
 Mêmes écrans, mêmes règles. Changements :
 
 - **Adresse de l'API** : `/api` sur la même origine. L'APK garde une adresse complète.
-- **Bouton Annuler (↶)**, près de STOP, avec le résumé de ce qu'il annule (« Annuler : lancement
-  Heirfall à 14:02 »). Masqué s'il n'y a rien à annuler.
 - **« Dernier log »** disparaît : la fenêtre des sessions le remplace.
 - **Relecture de l'état** toutes les 20 s quand la page est visible, et dès qu'elle redevient
   visible : un compteur lancé sur un autre appareil apparaît vite.
@@ -212,7 +214,7 @@ Une fenêtre par-dessus l'app, ouverte par un bouton « Sessions ».
 
 ```
 ┌──────────────────────────────────┐
-│ Sessions          ↶ Annuler   ✕  │
+│ Sessions                      ✕  │
 │ ‹  Vendredi 2 oct.  ›            │  jour par jour, flèches
 │ Total 6 h 40 · dont 25 min pause │
 │──────────────────────────────────│
@@ -232,7 +234,6 @@ Une fenêtre par-dessus l'app, ouverte par un bouton « Sessions ».
 - Une session de plus de 8 h est signalée (⚠) : c'est le cas du bug d'hier.
 - **[⋯]** ouvre la ligne : supprimer (avec confirmation), changer le début ou la fin (sélecteur
   d'heure natif), le projet, le type, la note. Un bloc : supprimer, changer ses heures.
-- **Annuler** est aussi dans la fenêtre : on peut supprimer puis se raviser.
 - Partout : sur téléphone et dans l'app web, la fenêtre occupe l'écran ; depuis la mini-fenêtre du
   PC, un bouton ouvre une deuxième petite fenêtre Electron sur la page des sessions
   (`?vue=sessions`). C'est le même code dans les trois cas.
@@ -272,7 +273,6 @@ Le widget n'a ni annulation ni fenêtre des sessions : il ouvre l'app pour ça.
 
 - L'adresse du site devient celle du Worker.
 - Un bouton « Sessions » ouvre la fenêtre des sessions dans une deuxième fenêtre Electron.
-- Le bouton Annuler est présent dans la version compacte.
 
 ## 7. Agent Claude
 
