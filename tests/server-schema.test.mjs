@@ -23,11 +23,12 @@ test('base : fin avant le début, plus de 24 h → refusé ; durée nulle permis
   insertRow(db, { id: 'd', start_ms: t, end_ms: t + 24 * 3600000 });
 });
 
-test('base : un bloc a des heures entre 0 et 24, ni début ni fin', () => {
+test('base : un bloc a des heures positives (sans plafond : blocs repris), ni début ni fin', () => {
   const db = makeDb();
   insertRow(db, { id: 'a', kind: 'block', start_ms: null, hours: 3.5 });
   assert.throws(() => insertRow(db, { id: 'b', kind: 'block', start_ms: null, hours: 0 }), /CHECK/);
-  assert.throws(() => insertRow(db, { id: 'c', kind: 'block', start_ms: null, hours: 25 }), /CHECK/);
+  insertRow(db, { id: 'c', kind: 'block', start_ms: null, hours: 72 });
+  assert.throws(() => insertRow(db, { id: 'c2', kind: 'block', start_ms: null, hours: -1 }), /CHECK/);
   assert.throws(() => insertRow(db, { id: 'd', kind: 'block', start_ms: at('2026-10-01T09:00:00+02:00'), hours: 4 }), /CHECK/);
   assert.throws(() => insertRow(db, { id: 'e', kind: 'session', start_ms: null }), /CHECK/);
 });

@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS entries (
   day TEXT NOT NULL,                 -- jour du début (session) ou jour déclaré (bloc)
   start_ms INTEGER,
   end_ms INTEGER,                    -- vide : compteur en cours
-  hours REAL,                        -- bloc seulement ; la durée d'une session se calcule
+  hours REAL,                        -- bloc seulement (sans plafond : des blocs repris dépassent 24 h) ;
+                                     -- la durée d'une session se calcule
   type TEXT NOT NULL,
   note TEXT NOT NULL DEFAULT '',
   source TEXT NOT NULL,              -- app, hors ligne, claude, report
@@ -28,7 +29,7 @@ CREATE TABLE IF NOT EXISTS entries (
   touched_ms INTEGER NOT NULL,       -- dernière écriture : fait le « dernier log »
   deleted_ms INTEGER,
   CHECK (kind <> 'session' OR (start_ms IS NOT NULL AND hours IS NULL)),
-  CHECK (kind <> 'block' OR (start_ms IS NULL AND end_ms IS NULL AND hours > 0 AND hours <= 24)),
+  CHECK (kind <> 'block' OR (start_ms IS NULL AND end_ms IS NULL AND hours > 0)),
   CHECK (end_ms IS NULL OR (end_ms >= start_ms AND end_ms - start_ms <= 86400000))
 );
 

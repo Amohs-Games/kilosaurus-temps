@@ -86,8 +86,9 @@ Heures stockées en millisecondes UTC ; jours au format `aaaa-mm-jj`, au fuseau 
 Règles posées dans la base :
 
 - `kind = 'session'` ⇒ `start_ms` rempli et `hours` vide ; `kind = 'block'` ⇒ `start_ms` et
-  `end_ms` vides et `hours` entre 0 et 24 (les blocs repris de l'ancien formulaire ont des durées
-  libres ; l'API, elle, n'accepte que 2 / 4 / 6 / 8 / 10 / 12 pour un nouveau bloc).
+  `end_ms` vides et `hours` positif, sans plafond : les blocs repris de l'ancien formulaire ont des
+  durées libres, jusqu'à 72 h pour une saisie groupée. L'API, elle, n'accepte que
+  2 / 4 / 6 / 8 / 10 / 12 pour un nouveau bloc.
 - `end_ms ≥ start_ms` et `end_ms − start_ms ≤ 24 h`. Une session de durée nulle est permise : une
   bascule avec décalage peut fermer l'ancien compteur à l'heure de son début.
 - **Un seul compteur en cours** : index unique partiel sur les sessions actives sans fin. Deux
@@ -286,8 +287,8 @@ Le widget n'a ni annulation ni fenêtre des sessions : il ouvre l'app pour ça.
    session, sans Début un bloc (Source `report` gardée). Les types anciens (Autre, Narration) sont
    convertis.
 3. Le script refuse de produire le fichier si une ligne viole une règle de la base (fin avant
-   début, session de plus de 24 h, deux sessions qui se chevauchent, bloc hors 0 à 24 h, compteur
-   en cours) et liste ces lignes. Chacune se corrige dans la Sheet, ou s'écarte explicitement avec
+   début, session de plus de 24 h, deux sessions qui se chevauchent, bloc sans durée positive,
+   compteur en cours) et liste ces lignes. Chacune se corrige dans la Sheet, ou s'écarte explicitement avec
    `--exclude <id>`.
 4. Les sessions plus longues que le seuil d'oubli (8 h) sont listées sans bloquer : la session de
    14 h d'hier en fait partie, et s'écarte avec `--exclude`. Les lignes dont la colonne Heures ne
