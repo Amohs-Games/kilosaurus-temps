@@ -152,23 +152,48 @@ def totals(entries):
     return {"rows": len(entries), "byProjectType": {k: round(v, 4) for k, v in by.items()}}
 
 
-def main(argv):
-    sys.stdout.reconfigure(encoding="utf-8")  # accents lisibles dans la console Windows
+def parse_args(argv):
+    """→ (source, sortie, ids à écarter). Plusieurs --exclude s'ajoutent."""
     exclude, args, i = set(), [], 0
     while i < len(argv):
         if argv[i] == "--exclude":
-            exclude = set(argv[i + 1].split(","))
+            exclude |= {x for x in argv[i + 1].split(",") if x}
             i += 2
             continue
         args.append(argv[i])
         i += 1
-    src = args[0]
-    out = args[1] if len(args) > 1 else "reprise.sql"
+    return args[0], (args[1] if len(args) > 1 else "reprise.sql"), exclude
+
+
+def unknown_ids(rows, exclude):
+    """Ids demandés à l'écart mais absents de la Sheet : une faute de frappe ferait reprendre la ligne."""
+    known = {str(v["id"]) for v in rows}
+    return sorted(x for x in exclude if x not in known)
+
+
+def other_people(cfg, rows):
+    """Lignes des autres personnes de la Sheet, non reprises : comptées pour qu'aucune perte ne passe inaperçue."""
+    count = defaultdict(int)
+    for v in rows:
+        if v["person"] != cfg["me"]:
+            count[v["person"]] += 1
+    return dict(count)
+
+
+def main(argv):
+    sys.stdout.reconfigure(encoding="utf-8")  # accents lisibles dans la console Windows
+    src, out, exclude = parse_args(argv)
     cfg, projects, rows = read(src)
+    unknown = unknown_ids(rows, exclude)
+    if unknown:
+        print(f"ÉCHEC : ids à écarter introuvables dans la Sheet : {', '.join(unknown)}")
+        raise SystemExit(1)
     entries, problems, warnings = build(cfg, projects, rows, exclude)
 
     print(f"Projets : {', '.join(projects)}")
-    print(f"{len(entries)} lignes reprises pour {cfg['me']} ({len(exclude)} écartée(s) à la demande).")
+    print(f"{len(entries)} lignes reprises pour {cfg['me']} ({len(exclude)} écartée(s) à la demande : {', '.join(sorted(exclude)) or 'aucune'}).")
+    for person, n in sorted(other_people(cfg, rows).items()):
+        print(f"  non reprises : {n} ligne(s) de {person}")
     for w in warnings:
         print(f"  à vérifier : {w['id']} ({w['where']}) : {w['why']}")
     if problems:

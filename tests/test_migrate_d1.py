@@ -125,5 +125,20 @@ class MigrateTest(unittest.TestCase):
         self.assertIn("'l''écran'", sql)
 
 
+    def test_exclusions_et_autres_personnes_visibles(self):
+        workbook(self.path, {
+            "Fluffy": [
+                ["a", "Amohs", d(2026, 10, 1), None, None, 2, "", "app", None, None, None, "Dev"],
+                ["b", "Alex", d(2026, 10, 1), None, None, 2, "", "app", None, None, None, "Dev"],
+                ["c", "Alex", d(2026, 10, 1), None, None, 2, "", "app", None, None, None, "Dev"],
+            ],
+            "_Config": CONFIG,
+        })
+        cfg, projects, rows = m.read(self.path)
+        self.assertEqual(m.unknown_ids(rows, {"a", "zz"}), ["zz"])
+        self.assertEqual(m.other_people(cfg, rows), {"Alex": 2})
+        self.assertEqual(m.parse_args(["x.xlsx", "--exclude", "a,b", "--exclude", "c"]), ("x.xlsx", "reprise.sql", {"a", "b", "c"}))
+        self.assertEqual(m.parse_args(["x.xlsx", "out.sql"]), ("x.xlsx", "out.sql", set()))
+
 if __name__ == "__main__":
     unittest.main()
