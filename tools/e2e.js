@@ -173,6 +173,41 @@ async function main() {
   await page.click('[data-act="stop"]');
   await page.waitFor('document.querySelector(".hero.idle") && document.querySelector(".sync-ok")', 'arrêt');
 
+  console.log('Annuler');
+  await page.click('[data-act="start"][data-p="Fluffy"]');
+  await page.waitFor('document.querySelector(".sync-ok") && document.querySelector("[data-act=undo]:not([disabled])")', 'bouton Annuler');
+  check(/Lancement Fluffy/.test(await page.evaluate('(document.querySelector("[data-act=undo]") || {}).textContent || ""')), 'Annuler dit ce qu’il défait');
+  await page.click('[data-act="undo"]');
+  await page.waitFor('document.querySelector(".hero.idle") && document.querySelector(".sync-ok")', 'lancement annulé');
+  check((await api(P, { ...me, action: 'status' })).running === null, 'serveur : le lancement annulé ne laisse rien');
+
+  console.log('Fenêtre des sessions');
+  const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
+  await page.click('[data-act="start"][data-p="Proto"]');
+  await page.waitFor('document.querySelector(".sync-ok") && document.querySelector(".hero-project").textContent.startsWith("Proto · ")', 'lancement Proto');
+  await page.click('[data-act="stop"]');
+  await page.waitFor('document.querySelector(".hero.idle") && document.querySelector(".sync-ok")', 'arrêt');
+  await page.click('[data-act="sessions"]');
+  await page.waitFor('document.querySelector("dialog .sessions .entry")', 'liste des sessions');
+  await page.shot('03a-sessions');
+  const count = await page.evaluate('document.querySelectorAll("dialog .sessions .entry").length');
+  await page.click('dialog .sessions .entry:last-child [data-act="entryOpen"]');
+  await page.waitFor('document.getElementById("entry-type")', 'correction ouverte');
+  await page.evaluate('document.getElementById("entry-type").value = "Debug"');
+  await page.click('dialog [data-act="entrySave"]');
+  await page.waitFor('/Debug/.test(document.querySelector("dialog .sessions .entry:last-child").textContent)', 'type corrigé');
+  let h = await api(P, { ...me, action: 'history', from: todayKey, to: todayKey });
+  check(h.rows.filter((r) => r.project === 'Proto').at(-1)?.type === 'Debug', 'serveur : type corrigé');
+  await page.evaluate('window.confirm = () => true');
+  await page.click('dialog .sessions .entry:last-child [data-act="entryOpen"]');
+  await page.click('dialog [data-act="entryDelete"]');
+  await page.waitFor(`document.querySelectorAll("dialog .sessions .entry").length === ${count - 1}`, 'session supprimée');
+  await page.click('dialog [data-act="undo"]');
+  await page.waitFor(`document.querySelectorAll("dialog .sessions .entry").length === ${count}`, 'suppression annulée');
+  h = await api(P, { ...me, action: 'history', from: todayKey, to: todayKey });
+  check(h.rows.length === count, 'serveur : la session supprimée est revenue');
+  await page.click('dialog [data-act="sessionsClose"]');
+
   console.log('Bloc');
   await page.click('[data-act="block"][data-v="8"]');
   await page.waitFor('document.querySelector("dialog[open] [data-act=blockSave]")', 'choix du projet');
@@ -231,7 +266,7 @@ async function main() {
   await page.click('dialog [data-act="addProject"]');
   await page.evaluate('document.getElementById("project-name").value = "fluffy"');
   await page.click('[data-act="addProjectSave"]');
-  await page.waitFor('document.getElementById("toast").classList.contains("show")', 'message de refus');
+  await page.waitFor('document.getElementById("toast").classList.contains("show") && /Refusé/.test(document.getElementById("toast").textContent)', 'message de refus');
   check(/Refusé/.test(await page.evaluate('document.getElementById("toast").textContent')), 'un nom de projet déjà pris est refusé et signalé');
   await page.waitFor('document.querySelector(".sync-ok")', 'état rechargé après refus');
   check(!(await api(P, { ...me, action: 'status' })).projects.includes('fluffy'), 'serveur : aucun projet en double');
@@ -246,6 +281,7 @@ async function main() {
   check(!(await shown('.today')) && !(await shown('.blocks')), 'mini : journée et blocs masqués');
   check(await page.evaluate('document.documentElement.scrollWidth <= 300'), 'mini : rien ne dépasse en largeur');
   check(await page.evaluate('/Plus d.infos/.test((document.querySelector("[data-act=moreInfo]") || {}).textContent || "")'), 'mini : bouton « Plus d’infos »');
+  check(await shown('[data-act=sessions]'), 'mini : bouton Sessions');
   await page.shot('11-mini');
 
   check(page.errors.length === 0, 'aucune erreur JavaScript' + (page.errors.length ? ' : ' + page.errors.join(' | ') : ''));

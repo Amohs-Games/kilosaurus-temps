@@ -313,6 +313,9 @@ html.mini .more-info {
   text-decoration: none;
   white-space: nowrap;
 }
+/* « Sessions » dans la barre du haut de la mini-fenêtre : compact, pour tenir dans 300 px. */
+html.mini .top .link.small { margin: 0 0 0 auto; padding: 4px 6px; font-size: 13px; white-space: nowrap; }
+html.mini .me { display: none; }
 
 /* Icônes des boutons STOP / Pause / Reprendre, alignées avec le texte. */
 .stop, .pause, .resume { display: flex; align-items: center; justify-content: center; gap: 10px; }
@@ -328,6 +331,31 @@ html.mini .hero-pause { font-size: 13px; }
 .hero.paused .hero-time { color: #6b7280; }
 .hero.paused .resume { animation: kt-blink 1.4s ease-in-out infinite; }
 @keyframes kt-blink { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+
+/* Annuler : discret, sous les projets ; le résumé dit ce qui sera défait. */
+.undo { font-size: 14px; text-align: left; align-self: flex-start; }
+.undo:disabled { opacity: 0.45; text-decoration: none; }
+
+/* Fenêtre des sessions : un jour, une ligne par session ou bloc, un tap ouvre la correction. */
+.sessions { display: flex; flex-direction: column; gap: 10px; }
+.sessions-head { display: flex; flex-direction: column; gap: 2px; }
+.sessions-total { margin: 0; color: var(--muted); }
+.entries { display: flex; flex-direction: column; gap: 6px; }
+.entry { border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+.entry.open { border-color: var(--fg); }
+.entry-line { display: grid; grid-template-columns: 12px 1fr auto; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; text-align: left; }
+.entry-line .dot { width: 10px; height: 10px; border-radius: 50%; }
+.entry-main { display: flex; flex-direction: column; min-width: 0; }
+.entry-main small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.entry-hours { font-variant-numeric: tabular-nums; font-weight: 600; }
+.entry-hours.long { color: var(--warn); }
+.entry-form { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 12px; }
+.entry-times { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.entry-times label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 14px; }
+.danger { min-height: 52px; border-radius: 14px; border: 1px solid var(--err); color: var(--err); background: var(--card); font-weight: 600; }
+.sessions-page { display: flex; flex-direction: column; gap: 12px; }
+.recap-nav .icon:disabled { opacity: 0.3; }
+
 @media (prefers-reduced-motion: reduce) {
   .hero.paused .resume { animation: none; box-shadow: 0 0 0 3px var(--card), 0 0 0 5px var(--go); }
 }

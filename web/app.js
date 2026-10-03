@@ -11,8 +11,9 @@
 
   var L = window.KTLogic;
   var API = window.KT_API_URL;
-  var VERSION = '1.13.0';
-  var TIMEOUT_MS = 25000; // Apps Script répond parfois en 30 s ; l'écran, lui, a déjà réagi.
+  var VERSION = '2.0.0';
+  var TIMEOUT_MS = 10000; // le serveur répond en quelques centaines de ms ; au-delà, c'est le réseau.
+  var POLL_MS = 20000;    // relecture de l'état quand la page est visible (compteur lancé ailleurs)
   var RETRY_MS = 30000;
   var BUSY_RETRY_MS = 5000;
   var KEYS = { code: 'kt.code', status: 'kt.status', queue: 'kt.queue', type: 'kt.type', studio: 'kt.showStudio' };
@@ -22,6 +23,9 @@
   // et tâches seulement. La fenêtre fournit window.ktDesktop (taille, verrou).
   var MINI = /[?&]mini=1(&|$)/.test(location.search);
   if (MINI) document.documentElement.classList.add('mini');
+  // Fenêtre des sessions seule (?vue=sessions) : ouverte par la mini-fenêtre de bureau dans une
+  // deuxième fenêtre. Ailleurs, la même fenêtre s'ouvre par-dessus l'app.
+  var VUE_SESSIONS = /[?&]vue=sessions(&|$)/.test(location.search);
 
   // ---- Stockage local (peut être indisponible : navigation privée…) ----
 
@@ -47,6 +51,9 @@
     type: L.typeOf({ type: load(KEYS.type) }),
     showStudio: load(KEYS.studio) === '1',
     recap: null,
+    sessions: null,    // fenêtre des sessions : { day, rows, error, open }
+    undoing: false,
+    latencyMs: null,   // durée du dernier appel, affichée dans le détail de la synchro
   };
 
   function saveStatus() { save(KEYS.status, state.status ? JSON.stringify(state.status) : null); }
@@ -73,7 +80,7 @@
 
   function failureMessage(err) {
     if (err.kind === 'http') return 'Le serveur répond « ' + err.detail + ' ». Vérifie l’adresse de l’API (config.js) et son déploiement.';
-    if (err.kind === 'format') return 'Réponse inattendue du serveur. Le déploiement doit être ouvert à « Tout le monde », et le script ne doit pas planter.';
+    if (err.kind === 'format') return 'Réponse inattendue du serveur. Vérifie l’adresse de l’API (config.js).';
     return navigator.onLine === false ? 'Hors ligne.' : 'Serveur injoignable.';
   }
 
@@ -93,6 +100,7 @@
   function post(body) {
     var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
     var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, TIMEOUT_MS);
+    var t0 = Date.now();
     return fetch(API, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -100,6 +108,7 @@
       signal: ctrl ? ctrl.signal : undefined,
     }).then(function (r) {
       clearTimeout(timer);
+      state.latencyMs = Date.now() - t0;
       if (!r.ok) throw new ApiError('http', r.status);
       return r.text().then(function (text) {
         try { return JSON.parse(text); } catch (e) { throw new ApiError('format'); }
@@ -124,6 +133,31 @@
     if (navigator.vibrate) navigator.vibrate(10);
     render();
     flush();
+  }
+
+  // Action qui demande le réseau (annuler, supprimer, corriger) : envoyée tout de suite, hors de
+  // la file, et l'écran attend la réponse du serveur, qui fait foi.
+  function direct(body, doneMsg) {
+    return post(Object.assign({ code: state.code }, body)).then(function (res) {
+      state.undoing = false;
+      if (res.ok) {
+        setStatus(res.data);
+        setSync('ok');
+        if (doneMsg) toast(doneMsg);
+      } else if (res.error.code === 'unauthorized') {
+        return logout('Code refusé. Saisis-le à nouveau.');
+      } else {
+        toast('Refusé : ' + res.error.message);
+        refresh();
+      }
+      if (state.sessions) loadSessions();
+    }).catch(function (err) {
+      state.undoing = false;
+      rethrowIfBug(err);
+      toast('Pas envoyé : ' + failureMessage(err));
+      render();
+      renderSessions();
+    });
   }
 
   function setSync(sync, msg) {
@@ -275,6 +309,10 @@
         (state.sync === 'ok' ? 'Connexion…' : esc(state.syncMsg) + '<br>Nouvel essai dans un instant…') + '</p>';
       return;
     }
+    if (VUE_SESSIONS) {
+      app.innerHTML = state.sessions ? '<section class="sessions-page">' + sessionsHtml() + '</section>' : '';
+      return;
+    }
     // Haut en bas = ordre d'usage : ce qui tourne, choisir un type, lancer, la journée, après coup.
     app.innerHTML = header(s) + hero(s) +
       section('Tâche', typeBar(s)) +
@@ -286,7 +324,7 @@
   function setupView() {
     return '<section class="login"><h1>Kilosaurus Temps</h1>' +
       '<p class="error">Cette app n’est pas encore reliée à son API.</p>' +
-      '<p class="muted">Déploie le script Apps Script, puis colle l’URL de l’application Web dans <b>web/config.js</b> (README, étapes 5 et 6).</p>' +
+      '<p class="muted">Renseigne l’adresse de l’API dans <b>web/config.js</b> (README, mise en place).</p>' +
       '</section>';
   }
 
@@ -304,8 +342,9 @@
     return '<header class="top">' +
       '<button class="sync sync-' + state.sync + '" data-act="sync" aria-label="État de la synchro"></button>' +
       '<span class="me">' + esc(s ? s.me : '') + (s && s.agent ? ' <span class="tag">agent</span>' : '') + '</span>' +
-      // Mini-fenêtre : la version complète (journée, récap, blocs) s'ouvre dans le navigateur (Brave).
-      (MINI ? '<a class="more-info" data-act="moreInfo" href="./" target="_blank">Plus d’infos ↗</a>' : '') +
+      // Mini-fenêtre : la version complète s'ouvre dans le navigateur, les sessions dans une deuxième fenêtre.
+      (MINI ? '<button class="link small" data-act="sessions">Sessions</button>' +
+        '<a class="more-info" data-act="moreInfo" href="./" target="_blank">Plus d’infos ↗</a>' : '') +
       '<button class="icon" data-act="menu" aria-label="Menu">' + GEAR + '</button>' +
       '</header>';
   }
@@ -322,7 +361,7 @@
       return '<section class="hero idle">' +
         '<div class="hero-project">Rien en cours</div>' +
         '<div class="hero-time">0:00:00</div>' +
-        grid(s) +
+        grid(s) + undoButton(s) +
         '</section>';
     }
     var paused = L.isPause(r);
@@ -340,9 +379,17 @@
       '<div class="hero-time" id="elapsed">' + L.elapsed(Date.now() - session.start) + '</div>' +
       '<div class="hero-pause" id="session-pause">' + sessionPauseText(session) + '</div>' +
       '<div class="hero-actions">' + actions + '</div>' +
-      grid(s) +
+      grid(s) + undoButton(s) +
       '<button class="link note-text" data-act="note">' + (r.note ? esc(r.note) : '+ note') + '</button>' +
       '</section>';
+  }
+
+  // Annuler : la dernière action, résumée. Grisé tant qu'une action attend dans la file : l'action
+  // à annuler est celle que le serveur connaît, pas celle qui n'est pas encore partie.
+  function undoButton(s) {
+    if (!s.undo) return '';
+    var off = state.queue.length > 0 || state.undoing;
+    return '<button class="link undo" data-act="undo"' + (off ? ' disabled' : '') + '>↶ Annuler : ' + esc(s.undo.summary) + '</button>';
   }
 
   function typeBar(s) {
@@ -365,7 +412,8 @@
     return '<section class="today">' +
       '<div class="today-head"><span>Aujourd’hui</span><b id="today-total">' + L.duration(L.todayTotal(s.today, Date.now())) + '</b>' +
       '<span class="pause-total" id="today-pause">' + pauseLabel(s) + '</span>' +
-      '<button class="link small" data-act="recap">Récap</button></div>' +
+      '<button class="link small" data-act="recap">Récap</button>' +
+      '<button class="link small" data-act="sessions">Sessions</button></div>' +
       '<div class="timeline" id="timeline">' + timelineHtml(s) + '</div></section>';
   }
 
@@ -445,7 +493,7 @@
   document.body.appendChild(dlg);
   dlg.addEventListener('cancel', function (e) { if (dlg.dataset.locked) e.preventDefault(); });
   dlg.addEventListener('click', function (e) { if (e.target === dlg && !dlg.dataset.locked) closeDialog(); });
-  dlg.addEventListener('close', function () { state.forgotOpen = false; state.recap = null; });
+  dlg.addEventListener('close', function () { state.forgotOpen = false; state.recap = null; state.sessions = null; });
 
   function openDialog(html, locked) {
     dlg.innerHTML = '<div class="dlg">' + html + '</div>';
@@ -474,6 +522,7 @@
   }
 
   function checkForgotten() {
+    if (VUE_SESSIONS) return;
     var s = state.status;
     if (state.forgotOpen || !L.isForgotten(s, Date.now())) return;
     state.forgotOpen = true;
@@ -610,7 +659,7 @@
     },
 
     addProject: function () {
-      openDialog('<h2>Nouveau projet</h2><p>Un onglet du même nom est créé dans la Sheet.</p>' +
+      openDialog('<h2>Nouveau projet</h2>' +
         '<input class="field" id="project-name" type="text" maxlength="30" placeholder="Nom du projet">' +
         '<div class="actions">' + cancelButton() + '<button class="primary" data-act="addProjectSave">Créer</button></div>');
       document.getElementById('project-name').focus();
@@ -636,6 +685,7 @@
       var labels = { ok: 'Tout est synchronisé.', pending: 'En attente de synchro.', error: 'Erreur de synchro.' };
       openDialog('<h2>Synchro</h2><p>' + esc(state.syncMsg || labels[state.sync]) + '</p>' +
         (state.queue.length ? '<p>' + state.queue.length + ' action(s) en attente.</p>' : '') +
+        (state.latencyMs != null ? '<p class="muted">Dernière réponse du serveur : ' + state.latencyMs + ' ms.</p>' : '') +
         '<div class="actions">' + cancelButton() + '<button class="primary" data-act="retry">Réessayer</button></div>');
     },
 
@@ -649,6 +699,53 @@
       save(KEYS.studio, state.showStudio ? '1' : null);
       closeDialog();
       render();
+    },
+
+    undo: function () {
+      var s = state.status;
+      if (!s.undo || state.queue.length || state.undoing) return;
+      state.undoing = true;
+      render();
+      renderSessions();
+      direct({ action: 'undo', opId: s.undo.opId }, 'Annulé : ' + s.undo.summary);
+    },
+
+    sessions: function () {
+      // Mini-fenêtre : les sessions s'ouvrent dans une deuxième fenêtre (desktop/main.js).
+      if (MINI) { window.open('./?vue=sessions', 'sessions'); return; }
+      openSessions();
+    },
+    sessionsClose: function () { if (VUE_SESSIONS) window.close(); else closeDialog(); },
+    sessionsPrev: function () { shiftSessions(-1); },
+    sessionsNext: function () { shiftSessions(1); },
+
+    entryOpen: function (el) {
+      var ss = state.sessions;
+      ss.open = ss.open === el.dataset.id ? null : el.dataset.id;
+      renderSessions();
+    },
+
+    entryDelete: function (el) {
+      if (!window.confirm('Supprimer cette ligne ? « Annuler » la fera revenir.')) return;
+      state.sessions.open = null;
+      direct({ action: 'deleteEntry', id: el.dataset.id }, 'Supprimé.');
+    },
+
+    entrySave: function (el) {
+      var row = (state.sessions.rows || []).filter(function (r) { return r.id === el.dataset.id; })[0];
+      if (!row) return;
+      var picked = document.querySelector('#entry-hours .chip.on');
+      var params = L.entryEdit(row, {
+        start: fieldValue('entry-start'),
+        end: fieldValue('entry-end'),
+        hours: picked ? Number(picked.dataset.v) : null,
+        project: fieldValue('entry-project'),
+        type: fieldValue('entry-type'),
+        note: fieldValue('entry-note'),
+      });
+      state.sessions.open = null;
+      if (!params) return renderSessions();
+      direct(Object.assign({ action: 'editEntry', id: row.id }, params), 'Corrigé.');
     },
 
     recap: function () {
@@ -747,10 +844,112 @@
     }).join('') + '</div>';
   }
 
+  // ---- Fenêtre des sessions (lecture par `history`, écritures par `direct`) ----
+
+  function fieldValue(id) {
+    var el = document.getElementById(id);
+    return el && !el.disabled ? el.value : null;
+  }
+
+  function openSessions() {
+    state.sessions = { day: L.dayKey(new Date()), rows: null, error: '', open: null };
+    loadSessions();
+  }
+
+  function shiftSessions(n) {
+    var p = state.sessions.day.split('-');
+    var key = L.dayKey(new Date(+p[0], +p[1] - 1, +p[2] + n, 12));
+    if (key > L.dayKey(new Date())) return;
+    state.sessions = { day: key, rows: null, error: '', open: null };
+    loadSessions();
+  }
+
+  function loadSessions() {
+    var ss = state.sessions;
+    var day = ss.day;
+    ss.error = '';
+    renderSessions();
+    // Seule la réponse du jour encore affiché compte (changement de jour rapide).
+    var current = function () { return state.sessions === ss && ss.day === day; };
+    post({ code: state.code, action: 'history', from: day, to: day }).then(function (res) {
+      if (!current()) return;
+      if (res.ok) ss.rows = res.data.rows;
+      else ss.error = res.error.message;
+      renderSessions();
+    }).catch(function (err) {
+      rethrowIfBug(err);
+      if (!current()) return;
+      ss.error = 'Sessions indisponibles : ' + failureMessage(err);
+      renderSessions();
+    });
+  }
+
+  function renderSessions() {
+    if (!state.sessions || state.forgotOpen) return;
+    if (VUE_SESSIONS) return render();
+    openDialog(sessionsHtml());
+  }
+
+  function sessionsHtml() {
+    var ss = state.sessions;
+    var s = state.status;
+    var now = Date.now();
+    var label = L.dayLabel(ss.day, now);
+    var body;
+    if (ss.error) body = '<p class="error">' + esc(ss.error) + '</p>';
+    else if (!ss.rows) body = '<p class="muted">Chargement…</p>';
+    else if (!ss.rows.length) body = '<p class="muted">Rien ce jour-là.</p>';
+    else {
+      var g = L.aggregate(ss.rows, [ss.day], now);
+      var pause = g.byType[L.PAUSE_TYPE] || 0;
+      body = '<p class="sessions-total">Total <b>' + hoursLabel(g.total) + '</b>' +
+        (pause >= 1 / 60 ? ' · dont ' + Math.round(pause * 60) + ' min de pause' : '') + '</p>' +
+        '<div class="entries">' + ss.rows.map(function (r) { return entryHtml(s, r, now); }).join('') + '</div>';
+    }
+    var isToday = ss.day === L.dayKey(new Date());
+    return '<div class="sessions">' +
+      '<div class="sessions-head"><h2>Sessions</h2>' + undoButton(s) + '</div>' +
+      '<div class="recap-nav"><button class="icon" data-act="sessionsPrev" aria-label="Jour précédent">‹</button>' +
+      '<h2>' + esc(label.charAt(0).toUpperCase() + label.slice(1)) + '</h2>' +
+      '<button class="icon" data-act="sessionsNext" aria-label="Jour suivant"' + (isToday ? ' disabled' : '') + '>›</button></div>' +
+      body + '</div>' +
+      '<button class="secondary" data-act="sessionsClose">Fermer</button>';
+  }
+
+  function entryHtml(s, r, now) {
+    var t = L.typeOf(r);
+    var long = L.isLong(r, s.threshold, now);
+    var when = r.start ? L.clock(r.start) + ' → ' + (r.end ? L.clock(r.end) : 'en cours') : 'Bloc';
+    var open = state.sessions.open === r.id;
+    return '<div class="entry' + (open ? ' open' : '') + '">' +
+      '<button class="entry-line" data-act="entryOpen" data-id="' + esc(r.id) + '">' +
+      '<span class="dot" style="background:' + L.typeColor(s, t) + '"></span>' +
+      '<span class="entry-main"><span><b>' + esc(r.project) + '</b> · ' + esc(t) + '</span>' +
+      '<small>' + when + (r.note ? ' · ' + esc(r.note) : '') + '</small></span>' +
+      '<span class="entry-hours' + (long ? ' long' : '') + '">' + (long ? '⚠ ' : '') + L.duration(L.rowHours(r, now)) + '</span>' +
+      '</button>' + (open ? entryForm(s, r) : '') + '</div>';
+  }
+
+  function entryForm(s, r) {
+    var option = function (value, current) { return '<option' + (value === current ? ' selected' : '') + '>' + esc(value) + '</option>'; };
+    var times = r.start
+      ? '<div class="entry-times"><label>Début<input class="field" id="entry-start" type="time" value="' + L.clock(r.start) + '"></label>' +
+        '<label>Fin<input class="field" id="entry-end" type="time" value="' + (r.end ? L.clock(r.end) : '') + '"' + (r.end ? '' : ' disabled') + '></label></div>'
+      : '<div class="row blocks" id="entry-hours">' + L.BLOCK_HOURS.map(function (h) {
+        return '<button class="chip' + (h === Number(r.hours) ? ' on' : '') + '" data-act="pickHours" data-v="' + h + '">' + h + '</button>';
+      }).join('') + '</div>';
+    return '<div class="entry-form">' + times +
+      '<select class="field" id="entry-project">' + s.projects.map(function (p) { return option(p, r.project); }).join('') + '</select>' +
+      '<select class="field" id="entry-type">' + L.typesOf(s).map(function (t) { return option(t.name, L.typeOf(r)); }).join('') + '</select>' +
+      '<input class="field" id="entry-note" type="text" maxlength="500" placeholder="Note" value="' + esc(r.note) + '">' +
+      '<div class="actions"><button class="danger" data-act="entryDelete" data-id="' + esc(r.id) + '">Supprimer</button>' +
+      '<button class="primary" data-act="entrySave" data-id="' + esc(r.id) + '">Enregistrer</button></div></div>';
+  }
+
   // ---- Événements ----
 
   // Tant que l'état n'est pas chargé, seules ces actions ont un sens.
-  var WITHOUT_STATUS = ['close', 'sync', 'retry', 'menu', 'changeCode'];
+  var WITHOUT_STATUS = ['close', 'sync', 'retry', 'menu', 'changeCode', 'sessionsClose'];
 
   document.addEventListener('click', function (e) {
     var el = e.target.closest('[data-act]');
@@ -770,6 +969,7 @@
     native('setCode', code);
     render();
     refresh();
+    if (VUE_SESSIONS) openSessions();
   });
 
   window.addEventListener('online', refresh);
@@ -778,6 +978,8 @@
   });
   setInterval(tick, 1000);
   setInterval(function () { if (state.queue.length) flush(); }, RETRY_MS);
+  // Relecture de l'état quand la page est visible : un compteur lancé ailleurs apparaît vite.
+  setInterval(function () { if (document.visibilityState === 'visible' && !state.flushing) refresh(); }, POLL_MS);
 
   // Hors ligne pour le web seulement : dans l'APK, les fichiers sont déjà sur le téléphone.
   if ('serviceWorker' in navigator && location.protocol === 'https:' && !window.KTAndroid) {
@@ -803,4 +1005,5 @@
   if (state.code) native('setCode', state.code);
   render();
   if (CONFIGURED) refresh();
+  if (CONFIGURED && VUE_SESSIONS && state.code) openSessions();
 })();

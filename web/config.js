@@ -1,2 +1,3 @@
-// URL de la web app Apps Script (Déployer → Gérer les déploiements → URL de l'application Web).
-window.KT_API_URL = 'https://script.google.com/macros/s/AKfycbymtz045MJ4nZKm1scGElvtfiyAlb3WPzb9UEm4K_xiylXgADZdrFJsQaOINctJ5rNOKQ/exec';
+// Adresse de l'API : le Worker sert l'app et l'API sur la même origine. L'APK, lui, remplace ce
+// fichier par l'adresse complète (android/build.sh).
+window.KT_API_URL = '/api';

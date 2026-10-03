@@ -104,20 +104,34 @@
   }
 
   /**
-   * Nouvelle date-heure pour une correction d'heure (champ 'start' ou 'end', valeur « HH:MM »).
-   * La fin se place le jour du début, ou le lendemain si elle tombe avant : la session passe minuit.
-   * Le début se place le jour de la fin, ou la veille s'il tombe après.
+   * Champs à envoyer pour corriger une ligne depuis la fenêtre des sessions : seulement ceux qui
+   * changent. Les heures « HH:MM » se placent le jour du début ; une fin plus tôt que le début passe
+   * au lendemain (session qui passe minuit). Une heure inchangée (même HH:MM) n'est pas renvoyée,
+   * pour ne pas perdre ses secondes. Renvoie null si rien ne change.
    */
-  function editedInstant(last, field, hhmm) {
-    var d;
-    if (field === 'end') {
-      d = atTime(last.start, hhmm);
-      if (d <= new Date(last.start)) d.setDate(d.getDate() + 1);
-    } else {
-      d = atTime(last.end, hhmm);
-      if (d >= new Date(last.end)) d.setDate(d.getDate() - 1);
+  function entryEdit(row, form) {
+    var out = {};
+    if (form.project && form.project !== row.project) out.project = form.project;
+    if (form.type && form.type !== typeOf(row)) out.type = form.type;
+    if (form.note != null && form.note.trim() !== (row.note || '')) out.note = form.note.trim();
+    if (row.start) {
+      var startChanged = !!form.start && form.start !== clock(row.start);
+      var start = startChanged ? atTime(row.start, form.start) : new Date(row.start);
+      if (startChanged) out.start = start.toISOString();
+      if (row.end && form.end && form.end !== clock(row.end)) {
+        var end = atTime(start.toISOString(), form.end);
+        if (end <= start) end.setDate(end.getDate() + 1);
+        out.end = end.toISOString();
+      }
+    } else if (form.hours && form.hours !== Number(row.hours)) {
+      out.hours = form.hours;
     }
-    return d.toISOString();
+    return Object.keys(out).length ? out : null;
+  }
+
+  // Session plus longue que le seuil d'oubli : sans doute un compteur oublié (signalé ⚠).
+  function isLong(row, thresholdHours, nowMs) {
+    return !!row.start && rowHours(row, nowMs) > (thresholdHours || 8);
   }
 
   function pickableProjects(s, showStudio) {
@@ -189,16 +203,6 @@
         hours: p.hours, note: p.note || '', source: 'app', corrected: false,
       };
       if (s.last.date === dayKey(at)) upsertToday(s, s.last);
-    } else if (item.action === 'editLast') {
-      if (!s.last || s.last.id !== p.id) return s;
-      if (p.field === 'hours') s.last.hours = p.value;
-      else {
-        s.last[p.field] = p.value;
-        s.last.hours = hoursBetween(s.last.start, s.last.end);
-        s.last.date = dayKey(s.last.start);
-      }
-      s.last.corrected = true;
-      if ((s.today || []).some(function (r) { return r.id === s.last.id; })) upsertToday(s, s.last);
     } else if (item.action === 'addProject') {
       if (s.projects.indexOf(p.name) < 0) s.projects.push(p.name);
     }
@@ -316,7 +320,7 @@
   var api = {
     BLOCK_HOURS: BLOCK_HOURS, DEFAULT_TYPES: DEFAULT_TYPES, dayKey: dayKey, hoursBetween: hoursBetween,
     elapsed: elapsed, duration: duration, clock: clock, dayLabel: dayLabel,
-    editedInstant: editedInstant, visibleProjects: visibleProjects, pickableProjects: pickableProjects,
+    entryEdit: entryEdit, isLong: isLong, visibleProjects: visibleProjects, pickableProjects: pickableProjects,
     isForgotten: isForgotten, applyLocal: applyLocal,
     typesOf: typesOf, typeOf: typeOf, typeColor: typeColor, textOn: textOn, projectColor: projectColor, isPause: isPause, todayPause: todayPause, sessionOf: sessionOf, PAUSE_TYPE: PAUSE_TYPE, rowHours: rowHours, todayTotal: todayTotal,
     dayTimeline: dayTimeline, weekRange: weekRange, monthRange: monthRange, aggregate: aggregate, recapMatches: recapMatches,

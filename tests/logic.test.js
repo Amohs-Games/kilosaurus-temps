@@ -30,18 +30,6 @@ test('boutons visibles : le studio à part, le surplus derrière « Plus… »',
   assert.deepEqual(L.visibleProjects(s), { shown: ['A', 'B', 'C'], more: ['D', 'E'] });
 });
 
-test('correction d\'heure : la fin passe minuit si besoin', () => {
-  const last = { start: '2026-09-30T23:00:00+02:00', end: '2026-09-30T23:30:00+02:00' };
-  assert.equal(L.editedInstant(last, 'end', '01:00'), new Date('2026-10-01T01:00:00+02:00').toISOString());
-  assert.equal(L.editedInstant(last, 'end', '23:45'), new Date('2026-09-30T23:45:00+02:00').toISOString());
-});
-
-test('correction d\'heure : le début passe la veille si besoin', () => {
-  const last = { start: '2026-10-01T00:30:00+02:00', end: '2026-10-01T01:30:00+02:00' };
-  assert.equal(L.editedInstant(last, 'start', '23:30'), new Date('2026-09-30T23:30:00+02:00').toISOString());
-  assert.equal(L.editedInstant(last, 'start', '00:15'), new Date('2026-10-01T00:15:00+02:00').toISOString());
-});
-
 test('oubli détecté au-delà du seuil', () => {
   const s = Object.assign(base(), { running: { start: '2026-10-01T08:00:00+02:00' } });
   assert.equal(L.isForgotten(s, new Date('2026-10-01T15:59:00+02:00').getTime()), false);
@@ -63,7 +51,7 @@ test('optimiste : relancer le projet en cours ne fait rien', () => {
   assert.equal(s2.running.id, 'a1');
 });
 
-test('optimiste : stop, oubli, bloc, correction, nouveau projet', () => {
+test('optimiste : stop, oubli, bloc, nouveau projet', () => {
   let s = L.applyLocal(base(), { action: 'start', params: { id: 'a1', project: 'Fluffy' }, clientTime: '2026-10-01T09:00:00+02:00' });
   s = L.applyLocal(s, { action: 'stop', params: { endAt: '2026-10-01T17:00:00+02:00' }, clientTime: '2026-10-02T08:00:00+02:00' });
   assert.equal(s.running, null);
@@ -71,8 +59,6 @@ test('optimiste : stop, oubli, bloc, correction, nouveau projet', () => {
   assert.equal(s.last.corrected, true);
   s = L.applyLocal(s, { action: 'logBlock', params: { id: 'b1', project: 'Studio', hours: 4 }, clientTime: '2026-10-02T08:00:00+02:00' });
   assert.equal(s.last.date, '2026-10-02');
-  s = L.applyLocal(s, { action: 'editLast', params: { id: 'b1', field: 'hours', value: 6 }, clientTime: '2026-10-02T08:01:00+02:00' });
-  assert.equal(s.last.hours, 6);
   s = L.applyLocal(s, { action: 'addProject', params: { name: 'Nouveau' }, clientTime: '2026-10-02T08:02:00+02:00' });
   assert.equal(s.projects.at(-1), 'Nouveau');
 });
@@ -230,4 +216,33 @@ test('séance : le compteur part du lancement, la pause se cumule, un autre proj
     sess('y', 'Dev', '2026-10-01T10:00:00+02:00', null, 'Fluffy')];
   assert.equal(L.sessionOf(other, other[1], now).start, at('2026-10-01T10:00:00+02:00'));
   assert.equal(L.sessionOf([], { start: new Date(now - 60000).toISOString(), type: 'Dev', project: 'Fluffy' }, now).pauseMs, 0);
+});
+
+test('correction : seuls les champs changés partent', () => {
+  const row = { id: 'a', project: 'Fluffy', type: 'Dev', note: '', start: '2026-10-01T09:12:37+02:00', end: '2026-10-01T10:30:00+02:00', hours: 1.29 };
+  assert.equal(L.entryEdit(row, { start: '09:12', end: '10:30', project: 'Fluffy', type: 'Dev', note: '' }), null, 'les secondes du début ne comptent pas');
+  assert.deepEqual(L.entryEdit(row, { start: '09:12', end: '11:00', project: 'Fluffy', type: 'Dev', note: '' }), { end: new Date('2026-10-01T11:00:00+02:00').toISOString() });
+  assert.deepEqual(L.entryEdit(row, { start: '08:00', end: '10:30', project: 'Jam', type: 'Art', note: ' boss ' }), {
+    project: 'Jam', type: 'Art', note: 'boss', start: new Date('2026-10-01T08:00:00+02:00').toISOString(),
+  });
+});
+
+test('correction : fin après minuit', () => {
+  const row = { id: 'a', project: 'Fluffy', type: 'Dev', note: '', start: '2026-09-30T23:00:00+02:00', end: '2026-09-30T23:30:00+02:00' };
+  assert.deepEqual(L.entryEdit(row, { start: '23:00', end: '01:15', project: 'Fluffy', type: 'Dev', note: '' }), { end: new Date('2026-10-01T01:15:00+02:00').toISOString() });
+});
+
+test('correction : compteur en cours (pas de fin), bloc (heures)', () => {
+  const running = { id: 'r', project: 'Fluffy', type: 'Misc', note: '', start: '2026-10-01T09:00:00+02:00', end: null };
+  assert.deepEqual(L.entryEdit(running, { start: '08:30', end: null, project: 'Fluffy', type: 'Misc', note: '' }), { start: new Date('2026-10-01T08:30:00+02:00').toISOString() });
+  const block = { id: 'b', project: 'Fluffy', type: 'Misc', note: '', start: null, end: null, hours: 8 };
+  assert.deepEqual(L.entryEdit(block, { hours: 6, project: 'Fluffy', type: 'Misc', note: '' }), { hours: 6 });
+  assert.equal(L.entryEdit(block, { hours: 8, project: 'Fluffy', type: 'Misc', note: '' }), null);
+});
+
+test('session anormalement longue : au-delà du seuil d\'oubli', () => {
+  const now = at('2026-10-02T12:00:00+02:00');
+  assert.equal(L.isLong(sess('a', 'Dev', '2026-10-01T13:05:00+02:00', '2026-10-02T03:07:00+02:00'), 8, now), true);
+  assert.equal(L.isLong(sess('b', 'Dev', '2026-10-01T09:00:00+02:00', '2026-10-01T12:00:00+02:00'), 8, now), false);
+  assert.equal(L.isLong({ start: null, hours: 10 }, 8, now), false, 'un bloc n\'est jamais signalé');
 });
