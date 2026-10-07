@@ -4,7 +4,8 @@
 //   cd desktop && npm install && npm start
 //
 // Icône près de l'horloge : afficher / masquer, verrouiller la position, toujours au-dessus, lancer
-// au démarrage, ouvrir en grand, quitter. Ctrl + Alt + K affiche ou masque la fenêtre.
+// au démarrage, ouvrir en grand, quitter. Ctrl + Alt + K affiche ou masque la fenêtre. Le bouton –
+// de la page la réduit dans la barre des tâches, le temps qu'elle ne gêne plus.
 // « Sessions » (barre du haut) ouvre la fenêtre des sessions dans une deuxième fenêtre.
 // Les réglages (position, verrou…) sont gardés dans window.json, dans le dossier de l'app.
 const { app, BrowserWindow, Tray, Menu, screen, shell, nativeImage, ipcMain, globalShortcut, session } = require('electron');
@@ -68,7 +69,7 @@ function createWindow() {
     frame: false,
     resizable: false,
     maximizable: false,
-    minimizable: false,
+    minimizable: true,
     fullscreenable: false,
     skipTaskbar: true,
     show: false,
@@ -91,6 +92,10 @@ function createWindow() {
     setTimeout(() => { if (win) loadSite(); }, RETRY_LOAD_MS);
   });
   loadSite();
+  // Réduite (bouton – de la page, Win+Bas…), la fenêtre a sa place dans la barre des tâches pour
+  // qu'on puisse la rappeler ; revenue, elle la quitte et repasse au-dessus comme avant.
+  win.on('minimize', () => win.setSkipTaskbar(false));
+  win.on('restore', () => { win.setSkipTaskbar(true); applyOnTop(); });
   win.on('moved', () => {
     const b = win.getBounds();
     settings.x = b.x;
@@ -157,23 +162,40 @@ function applyOnTop() {
   win.setAlwaysOnTop(settings.onTop, 'floating');
 }
 
-// La page donne la hauteur de son contenu ; la fenêtre s'y ajuste en gardant son bord bas en place
-// (posée dans un coin bas, elle grandit vers le haut).
+// La page donne la hauteur de son contenu ; la fenêtre s'y ajuste en gardant son bord haut en place :
+// le contenu s'ouvre vers le bas, la barre du haut reste sous la souris. Si elle sortait de l'écran
+// par le bas, elle remonte juste ce qu'il faut ; le haut choisi (settings.y, posé en la déplaçant)
+// reste la référence, et elle y revient quand elle rapetisse.
 ipcMain.on('fit', (_e, height) => {
   if (!win) return;
   const h = Math.max(120, Math.min(900, Math.round(Number(height) || 0)));
   const b = win.getBounds();
   if (b.height === h) return;
-  win.setBounds({ x: b.x, y: b.y + b.height - h, width: b.width, height: h });
+  const area = screen.getDisplayMatching(b).workArea;
+  const top = Number.isFinite(settings.y) ? settings.y : b.y;
+  const y = Math.max(area.y, Math.min(top, area.y + area.height - h));
+  win.setBounds({ x: b.x, y, width: b.width, height: h });
   settings.height = h;
-  settings.y = b.y + b.height - h;
   saveSettings();
 });
 
+ipcMain.on('minimize', () => {
+  if (!win) return;
+  win.setSkipTaskbar(false);
+  win.minimize();
+});
+
+// Une fenêtre réduite revient à sa place (au lieu d'être masquée par le raccourci ou l'icône).
+function showWindow() {
+  if (win.isMinimized()) win.restore();
+  win.show();
+  applyOnTop();
+}
+
 function toggleVisible() {
   if (!win) return;
-  if (win.isVisible()) win.hide();
-  else { win.show(); applyOnTop(); }
+  if (win.isVisible() && !win.isMinimized()) win.hide();
+  else showWindow();
 }
 
 function applyAutostart() {
@@ -243,7 +265,7 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   // Un second lancement montre la fenêtre déjà ouverte au lieu d'en créer une autre.
-  app.on('second-instance', () => { if (win) { win.show(); applyOnTop(); } });
+  app.on('second-instance', () => { if (win) showWindow(); });
 
   app.whenReady().then(async () => {
     log('lancement (' + process.execPath + ')');

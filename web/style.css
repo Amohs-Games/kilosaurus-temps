@@ -267,8 +267,6 @@ html.mini #app { max-width: none; padding: 6px 10px 10px; gap: 8px; }
 html.mini .top { min-height: 30px; -webkit-app-region: drag; user-select: none; }
 html.mini .top button, html.mini .top a { -webkit-app-region: no-drag; }
 html.mini.locked .top { -webkit-app-region: no-drag; }
-html.mini .top .icon { width: 30px; height: 30px; text-decoration: none; font-size: 17px; }
-html.mini .top .icon svg { width: 18px; height: 18px; }
 html.mini .hero { padding: 10px 10px 8px; gap: 4px; }
 html.mini .hero-project { font-size: 14px; }
 html.mini .hero-time { font-size: 40px; }
@@ -302,20 +300,33 @@ html.mini .note-text, html.mini .add, html.mini .today { display: none; }
 .seg.seg-pause { background-image: repeating-linear-gradient(135deg, rgb(255 255 255 / .45) 0 3px, transparent 3px 7px); }
 .pause-total { font-size: 13px; color: var(--muted); }
 html.mini .pause, html.mini .resume { min-height: 40px; font-size: 16px; }
-html.mini .more-info {
-  -webkit-app-region: no-drag;
-  padding: 4px 10px;
-  border-radius: 999px;
+/* Barre du haut de la mini-fenêtre : point de synchro, Sessions, Plus d'infos, menu et réduire sont
+   tous la même pastille (hauteur, bordure, texte) ; ronde pour une icône, allongée pour un mot.
+   Le point reste à gauche, les autres se rangent à droite. Compacte, pour tenir dans 300 px. */
+html.mini .top { gap: 6px; }
+html.mini .me { display: none; }
+html.mini .top .sync, html.mini .top .link.small, html.mini .top .more-info, html.mini .top .icon {
+  height: 26px;
+  min-width: 26px;
+  margin: 0;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
   border: 1px solid var(--line);
+  border-radius: 999px;
   color: var(--fg);
   font-size: 13px;
   font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
 }
-/* « Sessions » dans la barre du haut de la mini-fenêtre : compact, pour tenir dans 300 px. */
-html.mini .top .link.small { margin: 0 0 0 auto; padding: 4px 6px; font-size: 13px; white-space: nowrap; }
-html.mini .me { display: none; }
+html.mini .top .sync, html.mini .top .icon { width: 26px; padding: 0; color: var(--muted); }
+html.mini .top .sync { margin-right: auto; }
+html.mini .top .icon svg { width: 15px; height: 15px; }
+html.mini .top .sync::before { width: 9px; height: 9px; }
+html.mini .top button:hover, html.mini .top a:hover { background: var(--card); }
 
 /* Icônes des boutons STOP / Pause / Reprendre, alignées avec le texte. */
 .stop, .pause, .resume { display: flex; align-items: center; justify-content: center; gap: 10px; }

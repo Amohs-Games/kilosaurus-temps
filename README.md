@@ -208,6 +208,9 @@ Utilisation :
 
 - **▶** lance le projet du widget en type **Writing**. **■** arrête le compteur en cours, quel que
   soit son projet ou son type.
+- **En pause** (lancée depuis l'app) : le widget affiche « ⏸ En pause » et la durée de la pause. Le
+  gros bouton devient **▶** et reprend la tâche d'avant la pause ; un petit **■** à côté arrête le
+  compteur.
 - **Aucune attente** : le widget change d'état au moment du tap, même sans réseau. Les taps partent
   derrière, un par un et dans l'ordre, chacun avec son heure ; sans réseau ils attendent et repartent
   tout seuls (toutes les minutes, au tap suivant, ou à l'ouverture de l'app).
@@ -229,7 +232,8 @@ Utilisation :
 
 Une petite fenêtre sans bordure, dans un coin de l'écran, au-dessus de tout : le compteur, les
 projets et les tâches (la version compacte du site, `?mini=1`). Elle se lance au démarrage de
-Windows et s'ajuste à la hauteur de son contenu.
+Windows et s'ajuste à la hauteur de son contenu : son bord haut reste en place et elle grandit vers
+le bas, sauf si elle sortait de l'écran (elle remonte alors juste ce qu'il faut).
 
 ```bash
 cd desktop && npm install && npm start

@@ -23,7 +23,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Widget lecture / stop. Le téléphone sert à écrire : ▶ lance le projet du widget en type Writing,
- * ■ arrête le compteur en cours, d'où qu'il vienne.
+ * ■ arrête le compteur en cours, d'où qu'il vienne. En pause (lancée depuis l'app), le gros bouton
+ * devient ▶ et reprend la tâche d'avant la pause ; un petit ■ à côté arrête le compteur.
  *
  * Zéro attente : un tap change l'état affiché (Prefs) et met l'action en file, sans réseau. Un seul
  * envoyeur vide la file derrière, dans l'ordre, chaque action avec l'heure de son tap (tapTime, à
@@ -37,6 +38,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public class WidgetProvider extends AppWidgetProvider {
     static final String ACTION_TOGGLE = "com.kilosaurus.temps.TOGGLE";
+    static final String ACTION_STOP = "com.kilosaurus.temps.STOP";
     static final String ACTION_REFRESH = "com.kilosaurus.temps.REFRESH";
     static final String ACTION_MIDNIGHT = "com.kilosaurus.temps.MIDNIGHT";
     static final String WIDGET_TYPE = "Writing";
@@ -52,9 +54,9 @@ public class WidgetProvider extends AppWidgetProvider {
     @Override
     public void onReceive(Context ctx, Intent intent) {
         String action = intent.getAction();
-        if (ACTION_TOGGLE.equals(action)) {
+        if (ACTION_TOGGLE.equals(action) || ACTION_STOP.equals(action)) {
             int widgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID);
-            toggle(ctx, widgetId);
+            toggle(ctx, widgetId, ACTION_STOP.equals(action));
             background(ctx, () -> send(ctx));
         } else if (ACTION_REFRESH.equals(action) || AppWidgetManager.ACTION_APPWIDGET_UPDATE.equals(action) || isClockEvent(action)) {
             renderAll(ctx);
@@ -85,8 +87,11 @@ public class WidgetProvider extends AppWidgetProvider {
         for (int id : widgetIds) p.forgetWidget(id);
     }
 
-    /** Le tap : état affiché changé et action mise en file, tout de suite, sans réseau. */
-    private static void toggle(Context ctx, int widgetId) {
+    /**
+     * Le tap : état affiché changé et action mise en file, tout de suite, sans réseau. Gros bouton :
+     * lance, reprend la pause ou arrête ; petit ■ (stopOnly, visible en pause) : arrête.
+     */
+    private static void toggle(Context ctx, int widgetId, boolean stopOnly) {
         Prefs p = new Prefs(ctx);
         synchronized (LOCK) {
             if (p.code().isEmpty()) {
@@ -95,9 +100,20 @@ public class WidgetProvider extends AppWidgetProvider {
                 long now = p.serverNow();
                 JSONObject item = new JSONObject();
                 try {
-                    if (p.isRunning()) {
+                    if (p.isPaused() && !stopOnly) {
+                        // Reprendre : la pause se ferme (sa part rejoint le total du jour), la tâche repart.
+                        String project = p.runningProject();
+                        String type = p.resumeType();
+                        p.stopLocal(now);
+                        p.startLocal(project, type, now);
+                        item.put("action", "start").put("id", UUID.randomUUID().toString())
+                            .put("project", project).put("type", type);
+                    } else if (p.isRunning()) {
                         p.stopLocal(now);
                         item.put("action", "stop");
+                    } else if (stopOnly) {
+                        renderAll(ctx); // déjà arrêté (petit ■ d'un affichage en retard)
+                        return;
                     } else {
                         String project = p.widgetProject(widgetId);
                         if (project.isEmpty()) {
@@ -264,12 +280,15 @@ public class WidgetProvider extends AppWidgetProvider {
         // fixes, car un chrono arrêté redessiné par le lanceur repartirait de son dernier affichage.
         v.setViewVisibility(R.id.chrono, running ? View.VISIBLE : View.GONE);
         v.setViewVisibility(R.id.chrono_idle, running ? View.GONE : View.VISIBLE);
+        // En pause : le chrono compte la pause, le gros bouton reprend (▶ vert), le petit ■ arrête.
+        boolean paused = p.isPaused();
+        v.setViewVisibility(R.id.stop_small, paused ? View.VISIBLE : View.GONE);
         if (running) {
-            v.setTextViewText(R.id.title, p.runningProject() + " · " + p.runningType());
+            v.setTextViewText(R.id.title, paused ? "⏸ En pause · " + p.runningProject() : p.runningProject() + " · " + p.runningType());
             v.setChronometer(R.id.chrono, elapsedNow - (now - p.runningStart()), null, true);
             v.setChronometer(R.id.today, elapsedNow - today, "Aujourd'hui %s", true);
-            v.setTextViewText(R.id.button, "■");
-            v.setInt(R.id.button, "setBackgroundResource", R.drawable.btn_stop);
+            v.setTextViewText(R.id.button, paused ? "▶" : "■");
+            v.setInt(R.id.button, "setBackgroundResource", paused ? R.drawable.btn_play : R.drawable.btn_stop);
         } else {
             String project = p.widgetProject(widgetId);
             v.setTextViewText(R.id.title, project.isEmpty() ? "Choisir un projet" : project + " · " + WIDGET_TYPE);
@@ -296,6 +315,7 @@ public class WidgetProvider extends AppWidgetProvider {
             new Intent(ctx, MainActivity.class).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
         v.setOnClickPendingIntent(R.id.button, broadcast(ctx, ACTION_TOGGLE, widgetId));
+        v.setOnClickPendingIntent(R.id.stop_small, broadcast(ctx, ACTION_STOP, widgetId));
         PendingIntent messageTap = forgotten
             ? PendingIntent.getActivity(ctx, OPEN_APP_REQUEST + widgetId,
                 new Intent(ctx, MainActivity.class).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
@@ -323,7 +343,7 @@ public class WidgetProvider extends AppWidgetProvider {
     private static PendingIntent broadcast(Context ctx, String action, int widgetId) {
         Intent i = new Intent(ctx, WidgetProvider.class).setAction(action)
             .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId);
-        int requestCode = widgetId * 2 + (ACTION_TOGGLE.equals(action) ? 0 : 1);
+        int requestCode = widgetId * 3 + (ACTION_TOGGLE.equals(action) ? 0 : ACTION_STOP.equals(action) ? 2 : 1);
         return PendingIntent.getBroadcast(ctx, requestCode, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 }

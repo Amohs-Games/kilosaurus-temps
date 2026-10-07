@@ -10,7 +10,8 @@
   var DEFAULT_TYPES = [
     // Trois ambiances = trois arcs du cercle des couleurs : Contenu en tons chauds (jaune → rouge),
     // Art en tons nature (vert-jaune → cyan), Code en tons froids (bleu → magenta). Dans un arc, des
-    // teintes nettement différentes. Misc, la tâche par défaut, en gris et toujours en premier.
+    // teintes nettement différentes. Orga (Social, Production), à part : rose et ocre, hors des trois
+    // arcs. Misc, la tâche par défaut, en gris et toujours en premier.
     { name: 'Misc', color: '#8A8F98', family: 'general' },
     { name: 'Writing', color: '#EAB308', family: 'contenu' },
     { name: 'Sound', color: '#F97316', family: 'contenu' },
@@ -23,6 +24,8 @@
     { name: 'Gameplay', color: '#6366F1', family: 'code' },
     { name: 'Tooling', color: '#8B5CF6', family: 'code' },
     { name: 'Debug', color: '#D946EF', family: 'code' },
+    { name: 'Social', color: '#EC4899', family: 'orga' },
+    { name: 'Production', color: '#B45309', family: 'orga' },
     // Pause : pas une tâche à choisir mais un état du compteur (bouton ⏸) ; le temps compte, marqué pause.
     { name: 'Pause', color: '#94A3B8', family: 'pause' },
   ];

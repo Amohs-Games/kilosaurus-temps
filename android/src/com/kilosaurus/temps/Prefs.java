@@ -25,6 +25,9 @@ import java.time.ZoneId;
  */
 final class Prefs {
     private static final long HOUR_MS = 3600000L;
+    static final String PAUSE_TYPE = "Pause";
+    // Deux morceaux qui se suivent (pause lancée, tâche fermée) : même seconde, à l'arrondi près.
+    private static final long SAME_INSTANT_MS = 1000;
     private final SharedPreferences sp;
 
     Prefs(Context ctx) {
@@ -79,6 +82,12 @@ final class Prefs {
     String runningProject() { return sp.getString("runningProject", ""); }
     long runningStart() { return sp.getLong("runningStart", 0); }
     String runningType() { return canonicalType(sp.getString("runningType", "Misc")); }
+
+    /** En pause : le compteur tourne, en type Pause (bouton ⏸ de l'app). */
+    boolean isPaused() { return isRunning() && PAUSE_TYPE.equals(runningType()); }
+
+    /** Tâche à reprendre après la pause : celle du morceau que la pause a fermé, sinon Writing. */
+    String resumeType() { return sp.getString("resumeType", WidgetProvider.WIDGET_TYPE); }
 
     /** Noms de la première version (Autre, Narration), encore possibles dans un état mémorisé. */
     static String canonicalType(String type) {
@@ -145,16 +154,41 @@ final class Prefs {
         if (data.has("threshold")) e.putLong("thresholdMs", Math.round(data.optDouble("threshold", 8) * HOUR_MS));
         if (queue().length() > 0 || tapSeq() != seqAtSend) { e.apply(); return; }
         JSONObject running = data.optJSONObject("running");
+        JSONArray today = data.optJSONArray("today");
         if (running != null) {
-            e.putString("runningProject", running.optString("project", ""));
+            long start = Instant.parse(running.optString("start")).toEpochMilli();
+            String project = running.optString("project", "");
+            e.putString("runningProject", project);
             e.putString("runningType", running.optString("type", "Misc"));
-            e.putLong("runningStart", Instant.parse(running.optString("start")).toEpochMilli());
+            e.putLong("runningStart", start);
+            if (PAUSE_TYPE.equals(canonicalType(running.optString("type", "")))) {
+                e.putString("resumeType", typeBefore(today, project, start));
+            }
         } else {
             e.remove("runningProject").remove("runningType").remove("runningStart");
         }
-        JSONArray today = data.optJSONArray("today");
         if (today != null) e.putString("todayKey", todayKey()).putLong("todayDoneMs", doneMs(today));
         e.apply();
+    }
+
+    /** Type du morceau fermé par la pause (même projet, fini à l'instant où la pause commence), sinon Writing. */
+    private static String typeBefore(JSONArray today, String project, long pauseStart) {
+        if (today == null) return WidgetProvider.WIDGET_TYPE;
+        for (int i = 0; i < today.length(); i++) {
+            JSONObject r = today.optJSONObject(i);
+            if (r == null || !project.equals(r.optString("project"))) continue;
+            String end = r.optString("end", "");
+            if (end.isEmpty() || "null".equals(end)) continue;
+            String raw = r.optString("type", "");
+            String type = raw.isEmpty() || "null".equals(raw) ? "Misc" : canonicalType(raw); // sans type (historique) : Misc
+            if (PAUSE_TYPE.equals(type)) continue;
+            try {
+                if (Math.abs(Instant.parse(end).toEpochMilli() - pauseStart) <= SAME_INSTANT_MS) return type;
+            } catch (RuntimeException ignored) {
+                // Heure illisible : ligne ignorée.
+            }
+        }
+        return WidgetProvider.WIDGET_TYPE;
     }
 
     private static long doneMs(JSONArray today) {
