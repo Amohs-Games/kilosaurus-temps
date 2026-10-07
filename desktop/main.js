@@ -166,15 +166,20 @@ function applyOnTop() {
 // le contenu s'ouvre vers le bas, la barre du haut reste sous la souris. Si elle sortait de l'écran
 // par le bas, elle remonte juste ce qu'il faut ; le haut choisi (settings.y, posé en la déplaçant)
 // reste la référence, et elle y revient quand elle rapetisse.
+// Écran zoomé (175 %…) : Windows arrondit la taille posée, getBounds() revient à 1 ou 2 px près.
+// D'où la largeur toujours redemandée à WIDTH (repartir de getBounds() l'élargit à chaque appel) et
+// la comparaison avec la dernière hauteur demandée (celle relue ne tombe jamais juste).
+let fittedHeight = 0;
 ipcMain.on('fit', (_e, height) => {
   if (!win) return;
   const h = Math.max(120, Math.min(900, Math.round(Number(height) || 0)));
+  if (h === fittedHeight) return;
+  fittedHeight = h;
   const b = win.getBounds();
-  if (b.height === h) return;
   const area = screen.getDisplayMatching(b).workArea;
   const top = Number.isFinite(settings.y) ? settings.y : b.y;
   const y = Math.max(area.y, Math.min(top, area.y + area.height - h));
-  win.setBounds({ x: b.x, y, width: b.width, height: h });
+  win.setBounds({ x: b.x, y, width: WIDTH, height: h });
   settings.height = h;
   saveSettings();
 });
