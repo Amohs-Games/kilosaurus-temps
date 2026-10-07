@@ -20,24 +20,24 @@ const WRITE_ACTIONS = ['start', 'stop', 'note', 'logBlock', 'logSession', 'addPr
 
 // Types de travail, dans l'ordre d'affichage. Une ligne sans type (historique) vaut Misc.
 export const TYPES = [
-  // Trois ambiances = trois arcs du cercle des couleurs : Contenu en tons chauds (jaune → rouge),
-  // Art en tons nature (vert-jaune → cyan), Code en tons froids (bleu → magenta). Dans un arc, des
-  // teintes nettement différentes. Orga (Social, Production), à part : rose et ocre, hors des trois
-  // arcs. Misc, la tâche par défaut, en gris et toujours en premier.
-  { name: 'Misc', color: '#8A8F98', family: 'general' },
+  // Quatre ambiances, une par rangée de boutons (chaque famille commence sa rangée) : Orga en tons
+  // chauds sourds (gris, brique, rose, brun), Contenu en tons chauds vifs (jaune, orange), Art en tons
+  // nature (vert → cyan), Code en tons froids (bleu → magenta). Dans une rangée, des teintes nettement
+  // différentes. Misc, la tâche par défaut, en gris et toujours en premier.
+  { name: 'Misc', color: '#8A8F98', family: 'orga' },
+  { name: 'Market', color: '#B91C1C', family: 'orga' },
+  { name: 'Social', color: '#DB2777', family: 'orga' },
+  { name: 'Production', color: '#92400E', family: 'orga' },
   { name: 'Writing', color: '#EAB308', family: 'contenu' },
   { name: 'Sound', color: '#F97316', family: 'contenu' },
-  { name: 'Market', color: '#EF4444', family: 'contenu' },
-  { name: 'Concept', color: '#84CC16', family: 'art' },
   { name: 'Art', color: '#22C55E', family: 'art' },
+  { name: 'Concept', color: '#84CC16', family: 'art' },
   { name: 'TechArt', color: '#14B8A6', family: 'art' },
   { name: 'UI', color: '#06B6D4', family: 'art' },
   { name: 'Dev', color: '#3B82F6', family: 'code' },
   { name: 'Gameplay', color: '#6366F1', family: 'code' },
   { name: 'Tooling', color: '#8B5CF6', family: 'code' },
   { name: 'Debug', color: '#D946EF', family: 'code' },
-  { name: 'Social', color: '#EC4899', family: 'orga' },
-  { name: 'Production', color: '#B45309', family: 'orga' },
   // Pause : pas une tâche à choisir mais un état du compteur (bouton ⏸) ; le temps compte, marqué pause.
   { name: 'Pause', color: '#94A3B8', family: 'pause' },
 ];

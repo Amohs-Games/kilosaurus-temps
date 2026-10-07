@@ -389,8 +389,12 @@
 
   function typeBar(s) {
     var cur = currentType();
+    // Une rangée par famille de tâches : la première de chaque famille repart en début de ligne.
+    var family = null;
     return '<div class="types">' + L.typesOf(s).filter(function (t) { return t.name !== L.PAUSE_TYPE; }).map(function (t) {
-      return '<button class="type' + (t.name === cur ? ' on' : '') + '" style="--c:' + t.color + ';--on:' + L.textOn(t.color) + '" data-act="type" data-t="' + esc(t.name) + '">' + esc(t.name) + '</button>';
+      var rowStart = t.family !== family;
+      family = t.family;
+      return '<button class="type' + (t.name === cur ? ' on' : '') + (rowStart ? ' row-start' : '') + '" style="--c:' + t.color + ';--on:' + L.textOn(t.color) + '" data-act="type" data-t="' + esc(t.name) + '">' + esc(t.name) + '</button>';
     }).join('') + '</div>';
   }
 

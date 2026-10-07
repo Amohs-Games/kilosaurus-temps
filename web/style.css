@@ -151,6 +151,7 @@ button { cursor: pointer; border: 0; background: none; padding: 0; }
 
 /* Types de travail */
 .types { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.type.row-start { grid-column-start: 1; }
 .type {
   min-height: 44px;
   border-radius: 12px;
