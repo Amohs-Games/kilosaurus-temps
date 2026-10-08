@@ -122,6 +122,8 @@ Au premier lancement, l'app demande le code de l'appareil. Elle le garde ensuite
 
 ## Utilisation
 
+- **Grand compteur** : le temps travaillé aujourd’hui, pauses exclues. Dessous, la durée de la séance
+  en cours et le cumul de ses pauses. Arrêté, il garde le travail du jour, en grisé.
 - **Type de travail** (Misc, Writing, Art, Dev…) : la rangée de boutons colorés. Compteur en cours,
   un tap bascule le type sans trou : le temps d'avant reste sous l'ancien type. Compteur arrêté, un
   tap choisit le type du prochain lancement.
@@ -167,7 +169,7 @@ Au premier lancement, l'app demande le code de l'appareil. Elle le garde ensuite
   - D1 peut remettre la base à n'importe quelle minute des 7 derniers jours :
     `npx wrangler d1 time-travel restore kilosaurus-temps --timestamp <date ISO>`.
 
-  Un bandeau orange s'affiche sur tous les appareils si la copie du PC manque ou a plus de 48 h,
+  Un bandeau orange s'affiche sur tous les appareils si la copie complète (PC et Drive) manque ou a plus de 48 h,
   ou si une journée finie n'a pas été figée.
 
 ## L'app Android (APK) et son widget
