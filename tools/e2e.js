@@ -120,8 +120,8 @@ async function main() {
   check(await page.evaluate('!!document.querySelector("[data-act=launch]") && document.querySelectorAll(".picker .pick").length >= 3'), 'à l’arrêt : sélecteur de projets et gros bouton LANCER');
   check(await page.evaluate('[...document.querySelectorAll(".block-title")].some((h) => h.textContent === "Activité")'), 'la rangée s’appelle « Activité »');
   await page.click('[data-act="openTasks"]');
-  await page.waitFor('document.querySelector("dialog[open] h2") && document.querySelector("dialog[open] h2").textContent === "Tâches"', 'panneau Tâches (provisoire)');
-  await page.click('dialog [data-act="close"]');
+  await page.waitFor('document.querySelector("dialog[open] h2") && document.querySelector("dialog[open] h2").textContent === "Tâches"', 'panneau Tâches');
+  await page.click('dialog [data-act="tasksClose"]');
 
   console.log('Lancement, bascule, stop');
   await page.click('[data-act="selectProject"][data-p="Fluffy"]');
@@ -272,7 +272,7 @@ async function main() {
   await page.shot('01a-accueil-tache');
   await page.click('.toptask .tt-main');
   await page.waitFor('document.querySelector("dialog[open] h2")', 'appui sur la ligne : panneau Tâches');
-  await page.click('dialog [data-act="close"]');
+  await page.click('dialog [data-act="tasksClose"]');
   await page.click('[data-act="checkTop"]');
   await page.waitFor('document.querySelector(".sync-ok") && /Prototype du dash/.test(document.querySelector(".toptask").textContent)', 'la suivante monte');
   s = await api(P, { ...me, action: 'status' });
@@ -281,6 +281,96 @@ async function main() {
   await page.click('[data-act="checkTop"]');
   await page.waitFor('document.querySelector(".sync-ok") && document.querySelector(".tasks-link")', 'plus de tâche : lien « + Tâches »');
   check(/2 faites/.test(await page.evaluate('document.querySelector(".tasks-link").textContent')), 'le lien dit combien sont faites aujourd’hui');
+
+  console.log('Panneau Tâches');
+  const todoOrder = async () => (await api(P, { ...me, action: 'status' })).tasks.filter((t) => !t.done).sort((a, b) => a.position - b.position).map((t) => t.description);
+  const rowTexts = () => page.evaluate('[...document.querySelectorAll("dialog .task-todo .task-desc")].map((e) => e.textContent)');
+  await page.click('[data-act="openTasks"]');
+  await page.waitFor('document.querySelector("dialog[open] .tasks")', 'panneau Tâches ouvert');
+  check(await page.evaluate('document.querySelectorAll("dialog .task-done").length') === 2, 'panneau : « Faites aujourd’hui » liste les 2 tâches cochées');
+  check(await page.evaluate('[...document.querySelectorAll("dialog .task-done .check")].every((c) => c.dataset.act === "taskUncheck")'), 'panneau : ☑ des tâches faites décoche');
+  // Ajout de trois tâches par la fiche.
+  const addTask = async (description, project, type) => {
+    await page.click('dialog [data-act="taskAdd"]');
+    await page.waitFor('document.getElementById("task-desc")', 'fiche d’une tâche');
+    if (project) await page.click(`dialog .tf-project[data-p="${project}"]`);
+    if (type) await page.click(`dialog .tf-type[data-t="${type}"]`);
+    await page.evaluate(`document.getElementById("task-desc").value = ${JSON.stringify(description)}`);
+    await page.click('dialog [data-act="taskSave"]');
+    await page.waitFor('document.querySelector("dialog .tasks") && !document.getElementById("task-desc")', 'retour à la liste');
+  };
+  await page.click('dialog [data-act="taskAdd"]');
+  await page.waitFor('document.getElementById("task-desc")', 'fiche d’ajout');
+  const defaults = await page.evaluate('({ project: (document.querySelector(".tf-project.on") || {}).textContent, type: (document.querySelector(".tf-type.on") || {}).textContent, max: document.getElementById("task-desc").maxLength, pause: !!document.querySelector(".tf-type[data-t=Pause]"), del: !!document.querySelector("[data-act=taskDelete]") })');
+  s = await api(P, { ...me, action: 'status' });
+  check(defaults.project === s.choice.project && defaults.type === s.choice.type, 'fiche d’ajout : projet et activité par défaut = le choix du moment');
+  check(defaults.max === 200 && !defaults.pause && !defaults.del, 'fiche d’ajout : 200 caractères au plus, pas de Pause, pas de Supprimer');
+  await page.shot('12-tache-fiche');
+  await page.click('dialog [data-act="taskBack"]');
+  await page.waitFor('document.querySelector("dialog .tasks")', 'annuler revient à la liste');
+  check(await page.evaluate('document.querySelectorAll("dialog .task-todo").length') === 0, 'annuler n’ajoute rien');
+  await addTask('Tâche un', 'Proto', 'Social');
+  await addTask('Tâche deux', 'Jam', 'Art');
+  await addTask('Tâche trois', 'Jam', 'Art');
+  check(JSON.stringify(await rowTexts()) === JSON.stringify(['Tâche un', 'Tâche deux', 'Tâche trois']), 'panneau : trois tâches, chacune ajoutée à la fin');
+  await page.waitFor('document.querySelector(".sync-ok")', 'synchro');
+  check(JSON.stringify(await todoOrder()) === JSON.stringify(['Tâche un', 'Tâche deux', 'Tâche trois']), 'serveur : trois tâches dans l’ordre d’ajout');
+  s = await api(P, { ...me, action: 'status' });
+  check(s.tasks.find((t) => t.description === 'Tâche deux')?.project === 'Jam' && s.tasks.find((t) => t.description === 'Tâche deux')?.type === 'Art', 'serveur : projet et activité choisis dans la fiche');
+  await page.shot('12a-taches');
+  // Glisser la poignée de la troisième au-dessus de la première, avec de vrais événements souris.
+  const gripPoint = (i) => page.evaluate(`(() => { const r = document.querySelectorAll("dialog .task-todo .grip")[${i}].getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+  const from = await gripPoint(2);
+  const to = await gripPoint(0);
+  await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: from.x, y: from.y });
+  await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: from.x, y: from.y, button: 'left', clickCount: 1 });
+  for (let k = 1; k <= 8; k++) await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: from.x, y: from.y + (to.y - 6 - from.y) * k / 8, button: 'left' });
+  check(await page.evaluate('document.querySelector("dialog .task.dragging") !== null'), 'glisser : la ligne tirée est marquée');
+  await page.shot('12b-glisser');
+  await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: from.x, y: to.y - 6, button: 'left', clickCount: 1 });
+  check(JSON.stringify(await rowTexts()) === JSON.stringify(['Tâche trois', 'Tâche un', 'Tâche deux']), 'glisser : l’ordre change tout de suite');
+  await page.waitFor('document.querySelector(".sync-ok")', 'synchro');
+  check(JSON.stringify(await todoOrder()) === JSON.stringify(['Tâche trois', 'Tâche un', 'Tâche deux']), 'serveur : ordre après glisser (moveTask)');
+  // Un appui sur la ligne ouvre la fiche pré-remplie, avec Supprimer.
+  await page.evaluate('[...document.querySelectorAll("dialog .task-todo .task-body")][1].click()');
+  await page.waitFor('document.getElementById("task-desc")', 'fiche d’une tâche existante');
+  check(await page.evaluate('document.getElementById("task-desc").value') === 'Tâche un' && await page.evaluate('!!document.querySelector("[data-act=taskDelete]")'), 'fiche existante : pré-remplie, avec Supprimer');
+  await page.shot('12d-tache-modifier');
+  await page.evaluate('document.getElementById("task-desc").value = "Tâche un bis"');
+  await page.click('dialog [data-act="taskSave"]');
+  await page.waitFor('document.querySelector("dialog .tasks") && document.querySelector(".sync-ok")', 'modification enregistrée');
+  check(JSON.stringify(await todoOrder()) === JSON.stringify(['Tâche trois', 'Tâche un bis', 'Tâche deux']), 'serveur : description modifiée (editTask), même place');
+  // Cocher la tâche du haut compteur en marche : le compteur bascule sur son projet et son activité.
+  await page.click('dialog [data-act="tasksClose"]');
+  await page.click('[data-act="selectProject"][data-p="Heirfall"]');
+  if (await page.evaluate('!!document.querySelector("[data-act=launch]")')) await page.click('[data-act="launch"]');
+  await page.waitFor('document.querySelector(".sync-ok") && document.querySelector(".hero-project").textContent.startsWith("Heirfall")', 'compteur en marche sur Heirfall');
+  await page.click('[data-act="openTasks"]');
+  await page.waitFor('document.querySelector("dialog .task-todo")', 'panneau rouvert');
+  await page.evaluate('document.querySelector("dialog .task-todo .check").click()');
+  await page.waitFor('document.querySelector(".sync-ok")', 'synchro');
+  s = await api(P, { ...me, action: 'status' });
+  check(s.tasks.find((t) => t.description === 'Tâche trois')?.done && s.running?.project === 'Proto' && s.running?.type === 'Social', 'serveur : tâche du haut cochée, le compteur bascule sur la suivante (Proto · Social)');
+  check(await page.evaluate('document.querySelectorAll("dialog .task-done").length') === 3 && await page.evaluate('document.querySelector("dialog .task-done:last-child .task-desc").textContent') === 'Tâche trois', 'panneau : la tâche cochée passe en bas de « Faites aujourd’hui »');
+  await page.shot('12c-tache-cochee');
+  // Décocher : elle revient dans la liste.
+  await page.evaluate('document.querySelector("dialog .task-done:last-child .check").click()');
+  await page.waitFor('document.querySelector(".sync-ok") && document.querySelectorAll("dialog .task-todo").length === 3', 'tâche décochée');
+  check((await api(P, { ...me, action: 'status' })).tasks.find((t) => t.description === 'Tâche trois')?.done === null, 'serveur : tâche décochée');
+  // Supprimer depuis la fiche.
+  await page.evaluate('[...document.querySelectorAll("dialog .task-todo .task-body")].find((e) => /Tâche deux/.test(e.textContent)).click()');
+  await page.waitFor('document.querySelector("[data-act=taskDelete]")', 'fiche avec Supprimer');
+  await page.click('dialog [data-act="taskDelete"]');
+  await page.waitFor('document.querySelector("dialog .tasks") && document.querySelector(".sync-ok")', 'retour à la liste');
+  check(!(await todoOrder()).includes('Tâche deux') && (await todoOrder()).length === 2, 'serveur : tâche supprimée');
+  // La croix ferme ; on remet l'écran comme avant (compteur arrêté, tâches de test retirées).
+  await page.click('dialog [data-act="tasksClose"]');
+  check(await page.evaluate('!document.querySelector("dialog[open]")'), 'le panneau se ferme');
+  await page.click('[data-act="stop"]');
+  await page.waitFor('document.querySelector(".hero.idle") && document.querySelector(".sync-ok")', 'arrêt');
+  for (const t of (await api(P, { ...me, action: 'status' })).tasks.filter((t) => !t.done)) await api(P, { ...me, action: 'deleteTask', id: t.id });
+  await page.click('[data-act="selectProject"][data-p="Heirfall"]');
+  await page.waitFor('document.querySelector(".sync-ok")', 'synchro');
 
   console.log('Hors ligne');
   await page.send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
@@ -336,7 +426,20 @@ async function main() {
   check(await page.evaluate('document.documentElement.scrollWidth <= 300'), 'mini : rien ne dépasse en largeur');
   check(await page.evaluate('/Plus d.infos/.test((document.querySelector("[data-act=moreInfo]") || {}).textContent || "")'), 'mini : bouton « Plus d’infos »');
   check(await shown('[data-act=sessions]'), 'mini : bouton Sessions');
+  // La mini-fenêtre ouvre le panneau Tâches dans une deuxième fenêtre : jamais en surimpression.
+  await page.evaluate('window.__opened = []; window.open = function (u, n) { window.__opened.push(u + "|" + n); return null; }');
+  await page.click('[data-act="openTasks"]');
+  check(await page.evaluate('window.__opened.join() === "./?vue=taches|taches" && !document.querySelector("dialog[open]")'), 'mini : « Tâches » ouvre ?vue=taches dans une deuxième fenêtre');
   await page.shot('11-mini');
+
+  console.log('Vue des tâches seule (?vue=taches)');
+  await api(P, { ...me, action: 'addTask', id: 'vue-a', description: 'Tâche de la vue seule', project: 'Jam', type: 'Art' });
+  await page.send('Emulation.setDeviceMetricsOverride', { width: 400, height: 640, deviceScaleFactor: 2, mobile: false });
+  await page.send('Page.navigate', { url: base + '/?vue=taches' });
+  await page.waitFor('document.querySelector(".tasks-page .tasks") && document.querySelector(".task-todo")', 'vue des tâches seule');
+  check(await page.evaluate('!document.querySelector("dialog[open]") && !document.querySelector(".hero")'), 'vue seule : la page est le panneau, sans écran principal');
+  await page.shot('13-vue-taches');
+  await api(P, { ...me, action: 'deleteTask', id: 'vue-a' });
 
   check(page.errors.length === 0, 'aucune erreur JavaScript' + (page.errors.length ? ' : ' + page.errors.join(' | ') : ''));
   page.close();

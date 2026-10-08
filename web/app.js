@@ -26,6 +26,10 @@
   // Fenêtre des sessions seule (?vue=sessions) : ouverte par la mini-fenêtre de bureau dans une
   // deuxième fenêtre. Ailleurs, la même fenêtre s'ouvre par-dessus l'app.
   var VUE_SESSIONS = /[?&]vue=sessions(&|$)/.test(location.search);
+  // Idem pour le panneau des tâches (?vue=taches).
+  var VUE_TACHES = /[?&]vue=taches(&|$)/.test(location.search);
+  if (VUE_SESSIONS) document.title = 'Sessions — Kilosaurus Temps';
+  if (VUE_TACHES) document.title = 'Tâches — Kilosaurus Temps';
 
   // ---- Stockage local (peut être indisponible : navigation privée…) ----
 
@@ -51,6 +55,7 @@
     showStudio: load(KEYS.studio) === '1',
     recap: null,
     sessions: null,    // fenêtre des sessions : { day, rows, error, open }
+    tasks: null,       // panneau des tâches : { form: null | { id, project, type }, dragging }
     latencyMs: null,   // durée du dernier appel, affichée dans le détail de la synchro
   };
 
@@ -282,6 +287,7 @@
 
   function render() {
     renderView();
+    if (!VUE_TACHES && !tasksBusy()) paintTasks();
     fitDesktopWindow();
   }
 
@@ -306,6 +312,10 @@
     }
     if (VUE_SESSIONS) {
       app.innerHTML = state.sessions ? '<section class="sessions-page">' + sessionsHtml() + '</section>' : '';
+      return;
+    }
+    if (VUE_TACHES) {
+      if (!tasksBusy()) paintTasks();
       return;
     }
     // Haut en bas = ordre d'usage : la tâche du haut, ce qui tourne, choisir un projet, lancer, l'activité,
@@ -517,7 +527,7 @@
   document.body.appendChild(dlg);
   dlg.addEventListener('cancel', function (e) { if (dlg.dataset.locked) e.preventDefault(); });
   dlg.addEventListener('click', function (e) { if (e.target === dlg && !dlg.dataset.locked) closeDialog(); });
-  dlg.addEventListener('close', function () { state.forgotOpen = false; state.recap = null; state.sessions = null; });
+  dlg.addEventListener('close', function () { state.forgotOpen = false; state.recap = null; state.sessions = null; state.tasks = null; });
 
   function openDialog(html, locked) {
     dlg.innerHTML = '<div class="dlg">' + html + '</div>';
@@ -546,7 +556,7 @@
   }
 
   function checkForgotten() {
-    if (VUE_SESSIONS) return;
+    if (VUE_SESSIONS || VUE_TACHES) return;
     var s = state.status;
     if (state.forgotOpen || !L.isForgotten(s, Date.now())) return;
     state.forgotOpen = true;
@@ -582,9 +592,55 @@
       act('start', { id: uid(), project: c.project, type: c.type });
     },
 
+    // Mini-fenêtre : le panneau s'ouvre dans une deuxième fenêtre (desktop/main.js).
     openTasks: function () {
-      openDialog('<h2>Tâches</h2>' + cancelButton());
+      if (MINI) { window.open('./?vue=taches', 'taches'); return; }
+      openTasksPanel();
     },
+    tasksClose: function () { if (VUE_TACHES) window.close(); else closeDialog(); },
+    taskAdd: function () {
+      var c = currentChoice();
+      state.tasks.form = { id: null, project: c.project, type: c.type };
+      paintTasks();
+      focusTaskField();
+    },
+    taskOpen: function (el) {
+      var t = findTask(el.dataset.id);
+      if (!t) return;
+      state.tasks.form = { id: t.id, project: t.project, type: L.typeOf(t) };
+      paintTasks();
+      focusTaskField();
+    },
+    taskProject: function (el) {
+      state.tasks.form.project = el.dataset.p;
+      markOn('.tf-project', el);
+    },
+    taskType: function (el) {
+      state.tasks.form.type = el.dataset.t;
+      markOn('.tf-type', el);
+    },
+    taskBack: function () { state.tasks.form = null; paintTasks(); },
+    taskSave: function () {
+      var form = state.tasks.form;
+      var description = (fieldValue('task-desc') || '').trim();
+      if (!description) { focusTaskField(); return; }
+      var t = form.id ? findTask(form.id) : null;
+      state.tasks.form = null;
+      if (!form.id) {
+        act('addTask', { id: uid(), description: description, project: form.project, type: form.type });
+      } else if (t && (description !== t.description || form.project !== t.project || form.type !== L.typeOf(t))) {
+        act('editTask', { id: form.id, description: description, project: form.project, type: form.type });
+      } else {
+        paintTasks();
+      }
+    },
+    taskDelete: function () {
+      var id = state.tasks.form.id;
+      state.tasks.form = null;
+      act('deleteTask', { id: id });
+    },
+    taskCheck: function (el) { act('checkTask', { id: el.dataset.id }); },
+    taskUncheck: function (el) { act('uncheckTask', { id: el.dataset.id }); },
 
     checkTop: function (el) {
       act('checkTask', { id: el.dataset.id });
@@ -975,10 +1031,146 @@
       '<button class="primary" data-act="entrySave" data-id="' + esc(r.id) + '">Enregistrer</button></div></div>';
   }
 
+  // ---- Panneau des tâches (par-dessus l'écran, ou page seule en ?vue=taches) ----
+
+  function findTask(id) {
+    return ((state.status && state.status.tasks) || []).filter(function (t) { return t.id === id; })[0] || null;
+  }
+
+  function openTasksPanel() {
+    state.tasks = { form: null, dragging: false };
+    paintTasks();
+  }
+
+  // Une fiche ouverte ou une ligne tirée ne doivent pas être redessinées par une relecture de l'état
+  // (la saisie ou le geste serait perdu).
+  function tasksBusy() {
+    return !state.tasks || !!state.tasks.form || state.tasks.dragging || (!VUE_TACHES && !dlg.open) || state.forgotOpen;
+  }
+
+  function paintTasks() {
+    if (!state.tasks || !state.status) return;
+    if (VUE_TACHES) {
+      document.getElementById('app').innerHTML = '<section class="tasks-page">' + tasksHtml() + '</section>';
+      return;
+    }
+    if (state.forgotOpen) return;
+    openDialog(tasksHtml());
+  }
+
+  function focusTaskField() {
+    var el = document.getElementById('task-desc');
+    if (el) el.focus();
+  }
+
+  function markOn(selector, on) {
+    Array.prototype.forEach.call(document.querySelectorAll(selector), function (b) {
+      b.classList.toggle('on', b === on);
+    });
+  }
+
+  function taskMeta(t) { return esc(t.project) + ' · ' + esc(L.typeOf(t)); }
+
+  function tasksHtml() {
+    var s = state.status;
+    if (state.tasks.form) return taskFormHtml(s, state.tasks.form);
+    var todo = L.todoTasks(s);
+    var done = L.doneTasks(s, Date.now());
+    return '<div class="tasks">' +
+      '<div class="tasks-head"><h2>Tâches</h2><button class="icon" data-act="tasksClose" aria-label="Fermer">✕</button></div>' +
+      (todo.length ? '<ul class="task-list">' + todo.map(function (t) {
+        return '<li class="task task-todo" data-id="' + esc(t.id) + '">' +
+          '<button class="grip" aria-label="Déplacer">≡</button>' +
+          '<button class="check" data-act="taskCheck" data-id="' + esc(t.id) + '" aria-label="Cocher"></button>' +
+          '<button class="task-body" data-act="taskOpen" data-id="' + esc(t.id) + '">' +
+          '<span class="task-desc">' + esc(t.description) + '</span><small>' + taskMeta(t) + '</small></button></li>';
+      }).join('') + '</ul>' : '<p class="tasks-empty">Rien à faire pour l’instant.</p>') +
+      '<button class="secondary" data-act="taskAdd">+ Ajouter une tâche</button>' +
+      (done.length ? '<h3 class="tasks-sub">Faites aujourd’hui</h3><ul class="task-list">' + done.map(function (t) {
+        return '<li class="task task-done" data-id="' + esc(t.id) + '">' +
+          '<button class="check on" data-act="taskUncheck" data-id="' + esc(t.id) + '" aria-label="Décocher">✓</button>' +
+          '<span class="task-body"><span class="task-desc">' + esc(t.description) + '</span><small>' + taskMeta(t) + '</small></span></li>';
+      }).join('') + '</ul>' : '') +
+      '</div>';
+  }
+
+  // La fiche : ajout (champs au choix du moment) ou modification (champs de la tâche, avec Supprimer).
+  function taskFormHtml(s, form) {
+    var t = form.id ? findTask(form.id) : null;
+    return '<div class="tasks task-form">' +
+      '<div class="tasks-head"><h2>' + (t ? 'Tâche' : 'Nouvelle tâche') + '</h2></div>' +
+      '<input class="field" id="task-desc" maxlength="200" autocomplete="off" placeholder="Qu’y a-t-il à faire ?" value="' + esc(t ? t.description : '') + '">' +
+      '<div class="label">Activité</div>' +
+      '<div class="types">' + L.typesOf(s).filter(function (x) { return x.name !== L.PAUSE_TYPE; }).map(function (x) {
+        return '<button class="type tf-type' + (x.name === form.type ? ' on' : '') + '" style="--c:' + x.color + ';--on:' + L.textOn(x.color) + '" data-act="taskType" data-t="' + esc(x.name) + '">' + esc(x.name) + '</button>';
+      }).join('') + '</div>' +
+      '<div class="label">Projet</div>' +
+      '<div class="row">' + s.projects.map(function (p) {
+        return '<button class="chip tf-project' + (p === form.project ? ' on' : '') + '" data-act="taskProject" data-p="' + esc(p) + '">' + esc(p) + '</button>';
+      }).join('') + '</div>' +
+      '<div class="actions"><button class="secondary" data-act="taskBack">Annuler</button>' +
+      '<button class="primary" data-act="taskSave">Enregistrer</button></div>' +
+      (t ? '<button class="danger" data-act="taskDelete">Supprimer</button>' : '') +
+      '</div>';
+  }
+
+  // Glisser pour réordonner : seule la poignée ≡ (touch-action: none) lance le geste, le reste de la
+  // liste défile normalement. La ligne suit le doigt, les autres s'écartent ; au relâchement, moveTask.
+  document.addEventListener('pointerdown', function (e) {
+    var grip = e.target.closest && e.target.closest('.grip');
+    if (!grip || !state.tasks || e.button > 0) return;
+    e.preventDefault();
+    startTaskDrag(e, grip.closest('.task'));
+  });
+
+  function startTaskDrag(e, row) {
+    var rows = Array.prototype.slice.call(row.parentNode.querySelectorAll('.task-todo'));
+    var from = rows.indexOf(row);
+    var rects = rows.map(function (r) { return r.getBoundingClientRect(); });
+    var step = rows.length > 1 ? rects[1].top - rects[0].top : rects[0].height;
+    var startY = e.clientY;
+    var target = from;
+    state.tasks.dragging = true;
+    row.classList.add('dragging');
+    document.body.classList.add('dragging-task');
+
+    function move(ev) {
+      if (ev.pointerId !== e.pointerId) return;
+      var dy = Math.max(-from * step, Math.min((rows.length - 1 - from) * step, ev.clientY - startY));
+      row.style.transform = 'translateY(' + dy + 'px)';
+      target = Math.max(0, Math.min(rows.length - 1, from + Math.round(dy / step)));
+      rows.forEach(function (r, i) {
+        if (r === row) return;
+        var shift = 0;
+        if (i > from && i <= target) shift = -step;
+        else if (i < from && i >= target) shift = step;
+        r.style.transform = shift ? 'translateY(' + shift + 'px)' : '';
+      });
+    }
+
+    function end(ev) {
+      if (ev.pointerId !== e.pointerId) return;
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', end);
+      document.removeEventListener('pointercancel', end);
+      document.body.classList.remove('dragging-task');
+      state.tasks.dragging = false;
+      var ids = rows.map(function (r) { return r.dataset.id; });
+      var id = ids[from];
+      var others = ids.filter(function (x) { return x !== id; });
+      if (ev.type === 'pointercancel' || target === from) { paintTasks(); return; }
+      act('moveTask', { id: id, before: target < others.length ? others[target] : null });
+    }
+
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', end);
+    document.addEventListener('pointercancel', end);
+  }
+
   // ---- Événements ----
 
   // Tant que l'état n'est pas chargé, seules ces actions ont un sens.
-  var WITHOUT_STATUS = ['close', 'sync', 'retry', 'menu', 'changeCode', 'sessionsClose'];
+  var WITHOUT_STATUS = ['close', 'sync', 'retry', 'menu', 'changeCode', 'sessionsClose', 'tasksClose'];
 
   document.addEventListener('click', function (e) {
     var el = e.target.closest('[data-act]');
@@ -999,6 +1191,7 @@
     render();
     refresh();
     if (VUE_SESSIONS) openSessions();
+    if (VUE_TACHES) openTasksPanel();
   });
 
   window.addEventListener('online', refresh);
@@ -1035,4 +1228,5 @@
   render();
   if (CONFIGURED) refresh();
   if (CONFIGURED && VUE_SESSIONS && state.code) openSessions();
+  if (CONFIGURED && VUE_TACHES && state.code) openTasksPanel();
 })();

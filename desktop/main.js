@@ -6,7 +6,7 @@
 // Icône près de l'horloge : afficher / masquer, verrouiller la position, toujours au-dessus, lancer
 // au démarrage, ouvrir en grand, quitter. Ctrl + Alt + K affiche ou masque la fenêtre. Le bouton –
 // de la page la réduit dans la barre des tâches, le temps qu'elle ne gêne plus.
-// « Sessions » (barre du haut) ouvre la fenêtre des sessions dans une deuxième fenêtre.
+// « Sessions » (barre du haut) et le panneau « Tâches » s'ouvrent dans une deuxième fenêtre.
 // Les réglages (position, verrou…) sont gardés dans window.json, dans le dossier de l'app.
 // Sauvegardes : une copie vérifiée de toute la base par jour de travail, dans les dossiers
 // `backupDirs` de window.json (PC et Google Drive), au lancement puis toutes les heures.
@@ -28,7 +28,7 @@ const BACKUP_EVERY_MS = 60 * 60 * 1000;
 let win = null;
 let tray = null;
 let settings = null;
-let sessionsWin = null;
+let sideWin = null;
 
 const settingsPath = () => path.join(app.getPath('userData'), 'window.json');
 
@@ -113,10 +113,10 @@ function createWindow() {
     settings.y = b.y;
     saveSettings();
   });
-  // « Sessions » ouvre une deuxième fenêtre ; les autres liens (« Plus d'infos ») partent dans
+  // « Sessions » et « Tâches » ouvrent une deuxième fenêtre ; les autres liens (« Plus d'infos ») partent dans
   // Brave, version complète.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/[?&]vue=sessions/.test(url)) openSessionsWindow(url);
+    if (/[?&]vue=(sessions|taches)/.test(url)) openSideWindow(url);
     else openInBrowser(url.replace(/[?&]mini=1/, ''));
     return { action: 'deny' };
   });
@@ -140,27 +140,30 @@ function openInBrowser(url) {
   require('child_process').spawn(exe, [url], { detached: true, stdio: 'ignore' }).unref();
 }
 
-// La fenêtre des sessions : une fenêtre normale, au-dessus si la mini-fenêtre l'est. À sa
-// fermeture, la mini-fenêtre relit l'état (une session supprimée ou corrigée s'y voit tout de suite).
-function openSessionsWindow(url) {
-  if (sessionsWin && !sessionsWin.isDestroyed()) {
-    sessionsWin.loadURL(url);
-    sessionsWin.show();
-    sessionsWin.focus();
+// La fenêtre latérale (sessions ou tâches, selon l'URL) : une fenêtre normale, au-dessus si la
+// mini-fenêtre l'est. Une seule à la fois : demander l'autre vue la recharge. À sa fermeture, la
+// mini-fenêtre relit l'état (une session corrigée, une tâche cochée s'y voit tout de suite).
+function openSideWindow(url) {
+  const title = (/[?&]vue=taches/.test(url) ? 'Tâches' : 'Sessions') + ' — Kilosaurus Temps';
+  if (sideWin && !sideWin.isDestroyed()) {
+    sideWin.setTitle(title);
+    sideWin.loadURL(url);
+    sideWin.show();
+    sideWin.focus();
     return;
   }
-  sessionsWin = new BrowserWindow({
+  sideWin = new BrowserWindow({
     width: 400,
     height: 640,
-    title: 'Sessions — Kilosaurus Temps',
+    title,
     backgroundColor: '#131316',
     icon: fs.existsSync(ICON) ? ICON : LOGO,
     autoHideMenuBar: true,
     alwaysOnTop: settings.onTop,
   });
-  sessionsWin.loadURL(url).catch((e) => log('fenêtre des sessions : ' + e.message));
-  sessionsWin.on('closed', () => {
-    sessionsWin = null;
+  sideWin.loadURL(url).catch((e) => log('fenêtre latérale : ' + e.message));
+  sideWin.on('closed', () => {
+    sideWin = null;
     if (win) win.webContents.executeJavaScript("window.dispatchEvent(new Event('online'))").catch(() => {});
   });
 }

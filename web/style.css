@@ -395,3 +395,26 @@ html.mini .hero-pause { font-size: 13px; }
 @media (prefers-reduced-motion: reduce) {
   .hero.paused .resume { animation: none; box-shadow: 0 0 0 3px var(--card), 0 0 0 5px var(--go); }
 }
+
+/* Panneau des tâches : liste à faire (poignée ≡, ☐, texte), fiche, faites du jour. */
+.tasks { display: flex; flex-direction: column; gap: 10px; }
+.tasks-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tasks-head h2 { margin: 0; }
+.tasks .row { flex-wrap: wrap; }
+.tasks-page { display: flex; flex-direction: column; gap: 12px; }
+.tasks-empty { margin: 0; color: var(--muted); text-align: center; padding: 8px 0; }
+.tasks-sub { margin: 6px 0 0; font-size: 15px; color: var(--muted); font-weight: 600; }
+.task-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.task { display: flex; align-items: center; gap: 6px; padding: 6px 10px 6px 0; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); position: relative; transition: transform .12s ease; }
+.task.dragging { z-index: 2; transition: none; box-shadow: 0 6px 18px rgb(0 0 0 / .25); border-color: var(--fg); }
+.task-done { padding-left: 10px; }
+.grip { flex: none; width: 36px; height: 40px; display: grid; place-items: center; font-size: 22px; line-height: 1; color: var(--muted); cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.dragging-task, .dragging-task * { cursor: grabbing; user-select: none; -webkit-user-select: none; }
+.task .check { display: grid; place-items: center; font-size: 17px; font-weight: 700; line-height: 1; }
+.task .check.on { background: var(--go); border-color: var(--go); color: #fff; }
+.task-body { flex: 1; min-width: 0; display: flex; flex-direction: column; text-align: left; padding: 4px 0; }
+.task-desc { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-body small { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-done .task-desc { text-decoration: line-through; color: var(--muted); }
+.task-form .types { grid-template-columns: repeat(3, 1fr); }
+html.mini .task { gap: 4px; }
