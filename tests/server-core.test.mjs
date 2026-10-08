@@ -344,7 +344,7 @@ test('status.types et status.today', async () => {
   ok(await call('start', { id: 'a', project: 'Fluffy', type: 'Dev' }));
   clock.advance(60);
   const s = ok(await call('start', { id: 'b', project: 'Fluffy', type: 'Art' }));
-  assert.deepEqual(s.types.map((t) => t.name), ['Misc', 'Market', 'Social', 'Production', 'Writing', 'Sound', 'Art', 'Concept', 'TechArt', 'UI', 'Dev', 'Gameplay', 'Tooling', 'Debug', 'Pause']);
+  assert.deepEqual(s.types.map((t) => t.name), ['Misc', 'Market', 'Social', 'Production', 'Art', 'Concept', 'TechArt', 'UI', 'Dev', 'Gameplay', 'Tooling', 'Debug', 'Writing', 'Sound', 'Pause']);
   assert.deepEqual(s.today.map((r) => r.id), ['a', 'b']);
   assert.equal(s.today[1].end, null);
 });

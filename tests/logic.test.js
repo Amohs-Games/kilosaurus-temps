@@ -120,7 +120,7 @@ test('frise : de 8 h (ou plus tôt) à maintenant, segments découpés à minuit
 test('ancien état en cache (v1.0) : rien ne casse', () => {
   const old = base();
   assert.equal(L.todayTotal(old.today, Date.now()), 0);
-  assert.deepEqual(L.typesOf(old).map((t) => t.name), ['Misc', 'Market', 'Social', 'Production', 'Writing', 'Sound', 'Art', 'Concept', 'TechArt', 'UI', 'Dev', 'Gameplay', 'Tooling', 'Debug', 'Pause']);
+  assert.deepEqual(L.typesOf(old).map((t) => t.name), ['Misc', 'Market', 'Social', 'Production', 'Art', 'Concept', 'TechArt', 'UI', 'Dev', 'Gameplay', 'Tooling', 'Debug', 'Writing', 'Sound', 'Pause']);
   assert.equal(L.typeOf({ project: 'Fluffy' }), 'Misc');
   const s = L.applyLocal(old, { action: 'start', params: { id: 'a', project: 'Fluffy' }, clientTime: '2026-10-01T09:00:00+02:00' });
   assert.equal(s.running.type, 'Misc');
@@ -181,9 +181,9 @@ test('couleur des boutons de projet : Fluffy en bleu, les autres en vert', () =>
   assert.equal(L.projectColor('Heirfall'), L.projectColor('Proto'));
 });
 
-test('familles de tâches : Orga (Misc en premier), puis Contenu, Art, Code', () => {
+test('familles de tâches : Orga (Misc en premier), puis Art, Code, Contenu', () => {
   const fam = L.typesOf(base()).map((t) => t.family);
-  assert.deepEqual(fam, ['orga', 'orga', 'orga', 'orga', 'contenu', 'contenu', 'art', 'art', 'art', 'art', 'code', 'code', 'code', 'code', 'pause']);
+  assert.deepEqual(fam, ['orga', 'orga', 'orga', 'orga', 'art', 'art', 'art', 'art', 'code', 'code', 'code', 'code', 'contenu', 'contenu', 'pause']);
 });
 
 test('pause du jour : comptée à part, et incluse dans le total', () => {

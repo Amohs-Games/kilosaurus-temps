@@ -21,15 +21,14 @@ const WRITE_ACTIONS = ['start', 'stop', 'note', 'logBlock', 'logSession', 'addPr
 // Types de travail, dans l'ordre d'affichage. Une ligne sans type (historique) vaut Misc.
 export const TYPES = [
   // Quatre ambiances, une par rangée de boutons (chaque famille commence sa rangée) : Orga en tons
-  // chauds sourds (gris, brique, rose, brun), Contenu en tons chauds vifs (jaune, orange), Art en tons
-  // nature (vert → cyan), Code en tons froids (bleu → magenta). Dans une rangée, des teintes nettement
-  // différentes. Misc, la tâche par défaut, en gris et toujours en premier.
+  // chauds sourds (gris, brique, rose, brun), Art en tons nature (vert → cyan), Code en tons froids
+  // (bleu → magenta), et Contenu en dernier, rangée incomplète, en tons chauds vifs (jaune, orange).
+  // Dans une rangée, des teintes nettement différentes. Misc, la tâche par défaut, en gris et toujours
+  // en premier.
   { name: 'Misc', color: '#8A8F98', family: 'orga' },
   { name: 'Market', color: '#B91C1C', family: 'orga' },
   { name: 'Social', color: '#DB2777', family: 'orga' },
   { name: 'Production', color: '#92400E', family: 'orga' },
-  { name: 'Writing', color: '#EAB308', family: 'contenu' },
-  { name: 'Sound', color: '#F97316', family: 'contenu' },
   { name: 'Art', color: '#22C55E', family: 'art' },
   { name: 'Concept', color: '#84CC16', family: 'art' },
   { name: 'TechArt', color: '#14B8A6', family: 'art' },
@@ -38,6 +37,8 @@ export const TYPES = [
   { name: 'Gameplay', color: '#6366F1', family: 'code' },
   { name: 'Tooling', color: '#8B5CF6', family: 'code' },
   { name: 'Debug', color: '#D946EF', family: 'code' },
+  { name: 'Writing', color: '#EAB308', family: 'contenu' },
+  { name: 'Sound', color: '#F97316', family: 'contenu' },
   // Pause : pas une tâche à choisir mais un état du compteur (bouton ⏸) ; le temps compte, marqué pause.
   { name: 'Pause', color: '#94A3B8', family: 'pause' },
 ];
