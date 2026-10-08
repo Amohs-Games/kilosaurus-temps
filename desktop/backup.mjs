@@ -63,16 +63,29 @@ export function writeCopy(dir, name, buffer) {
   fs.mkdirSync(dir, { recursive: true });
   const tmp = final + '.tmp';
   fs.rmSync(tmp, { force: true });
-  fs.writeFileSync(tmp, buffer);
-  const back = fs.readFileSync(tmp);
-  if (!back.equals(buffer)) { fs.rmSync(tmp, { force: true }); throw new Error('Relecture différente de ce qui a été écrit.'); }
-  decodeBackup(back);
-  if (fs.existsSync(final)) { fs.rmSync(tmp, { force: true }); return 'exists'; }
-  fs.renameSync(tmp, final);
-  return 'written';
+  try {
+    // fsync avant le renommage : sans lui, une coupure juste après peut laisser le nom final
+    // sur un fichier incomplet, et les passages suivants le croiraient bon.
+    const fd = fs.openSync(tmp, 'w');
+    try {
+      let done = 0;
+      while (done < buffer.length) done += fs.writeSync(fd, buffer, done, buffer.length - done);
+      fs.fsyncSync(fd);
+    } finally { fs.closeSync(fd); }
+    const back = fs.readFileSync(tmp);
+    if (!back.equals(buffer)) throw new Error('Relecture différente de ce qui a été écrit.');
+    decodeBackup(back);
+    if (fs.existsSync(final)) { fs.rmSync(tmp, { force: true }); return 'exists'; }
+    fs.renameSync(tmp, final);
+    return 'written';
+  } catch (e) {
+    fs.rmSync(tmp, { force: true });
+    throw e;
+  }
 }
 
 export async function runBackup({ call, dirs, now = Date.now(), page = PAGE, log = () => {} }) {
+  if (!Array.isArray(dirs) || dirs.length === 0) throw new Error('Aucun dossier de sauvegarde configuré (backupDirs).');
   const day = workDayKey(now);
   const name = backupName(day);
   const missing = dirs.filter((d) => !fs.existsSync(path.join(d, name)));

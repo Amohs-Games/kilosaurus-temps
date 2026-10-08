@@ -1,5 +1,5 @@
 // Copie de bureau (desktop/backup.mjs) contre le vrai server/core.js, dans des dossiers temporaires.
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -11,7 +11,9 @@ import { TABLES } from '../server/backup.js';
 import { freezeDays } from '../server/core.js';
 import { restoreSql } from '../tools/restore.mjs';
 
-const tmpDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kt-backup-'));
+const made = [];
+const tmpDir = () => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'kt-backup-')); made.push(d); return d; };
+after(() => { for (const d of made) fs.rmSync(d, { recursive: true, force: true }); });
 
 async function setup() {
   const env = await makeEnv();
@@ -79,6 +81,12 @@ test('copie : un dossier indisponible → l\'autre est écrit, pas de signal, pu
   assert.equal((await api('status')).backup.desktopDay, '2026-10-01');
 });
 
+test('copie : aucun dossier configuré → échec, rien n\'est signalé', async () => {
+  const { api, clock } = await setup();
+  await assert.rejects(runBackup({ call: api, dirs: [], now: clock.now() }), /Aucun dossier de sauvegarde configuré \(backupDirs\)\./);
+  assert.equal((await api('status')).backup.desktopDay, null);
+});
+
 test('copie : un .tmp laissé par un arrêt brutal est remplacé', async () => {
   const { api, clock } = await setup();
   const d = tmpDir();
@@ -98,7 +106,6 @@ test('lecture : un fichier modifié est refusé', async () => {
   const { api, clock } = await setup();
   const d = tmpDir();
   await runBackup({ call: api, dirs: [d], now: clock.now() });
-  const { encodeBackup } = await import('../desktop/backup.mjs');
   const doc = decodeBackup(fs.readFileSync(path.join(d, backupName('2026-10-01'))));
   doc.tables.entries[0].note = 'falsifié';
   assert.throws(() => decodeBackup(encodeBackup(doc)), /Empreinte différente pour la table entries/);
