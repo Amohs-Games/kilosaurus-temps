@@ -132,7 +132,9 @@ button { cursor: pointer; border: 0; background: none; padding: 0; }
 .proj.more { color: var(--muted); font-weight: 500; }
 /* Tâche du haut : au-dessus du compteur. ☐ coche, le reste ouvre le panneau Tâches. */
 .toptask { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--radius); background: var(--card); border: 1px solid var(--line); cursor: pointer; }
-.check { flex: none; width: 28px; height: 28px; border-radius: 8px; border: 2px solid var(--muted); background: none; }
+.check { flex: none; position: relative; width: 28px; height: 28px; border-radius: 8px; border: 2px solid var(--muted); background: none; }
+/* Zone de toucher d'au moins 40 × 40 px, sans changer la case. */
+.check::after { content: ''; position: absolute; inset: -8px; }
 .check:hover { border-color: var(--fg); }
 .tt-main { flex: 1; min-width: 0; display: flex; flex-direction: column; text-align: left; }
 .tt-desc { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -303,6 +305,7 @@ html.mini .toptask { padding: 6px 8px; gap: 8px; }
 html.mini .tt-desc { font-size: 14px; }
 html.mini .tt-main small { font-size: 11px; }
 html.mini .check { width: 24px; height: 24px; }
+html.mini .check::after { inset: -10px; }
 html.mini .types { gap: 5px; }
 html.mini .type { min-height: 32px; font-size: 12px; border-radius: 9px; }
 html.mini .block-title { font-size: 11px; margin-top: 0; }

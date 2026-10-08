@@ -261,6 +261,14 @@ async function main() {
   const yesterday = new Date(Date.now() - 86400000).toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
   check(s.last?.project === 'Proto' && s.last?.hours === 4 && s.last?.date === yesterday, 'serveur : 4 h sur Proto hier');
 
+  console.log('Projet choisi masqué (Studio)');
+  const choiceBefore = (await api(P, { ...me, action: 'status' })).choice;
+  await api(P, { ...me, action: 'select', project: 'Studio' });
+  await page.send('Page.navigate', { url: base + '/' });
+  await page.waitFor('document.querySelector(".pick.on") && document.querySelector(".sync-ok")', 'accueil avec Studio choisi');
+  check(await page.evaluate('document.querySelector(".pick.on").textContent') === 'Studio', 'un projet choisi mais masqué (Studio) est affiché plein dans le sélecteur');
+  await api(P, { ...me, action: 'select', project: choiceBefore.project, type: choiceBefore.type });
+
   console.log('Tâche du haut');
   await api(P, { ...me, action: 'addTask', id: 'e2e-a', description: 'Répondre aux mails éditeur', project: 'Proto', type: 'Social' });
   await api(P, { ...me, action: 'addTask', id: 'e2e-b', description: 'Prototype du dash', project: 'Heirfall', type: 'Art' });
@@ -273,11 +281,18 @@ async function main() {
   await page.click('.toptask .tt-main');
   await page.waitFor('document.querySelector("dialog[open] h2")', 'appui sur la ligne : panneau Tâches');
   await page.click('dialog [data-act="tasksClose"]');
-  await page.click('[data-act="checkTop"]');
+  // Double clic réel sur ☐ : seule la tâche du haut est cochée, pas la suivante qui prend sa place.
+  const box = await page.evaluate('(() => { const r = document.querySelector("[data-act=checkTop]").getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()');
+  for (const clickCount of [1, 2]) {
+    await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: box.x, y: box.y, button: 'left', clickCount });
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: box.x, y: box.y, button: 'left', clickCount });
+  }
   await page.waitFor('document.querySelector(".sync-ok") && /Prototype du dash/.test(document.querySelector(".toptask").textContent)', 'la suivante monte');
   s = await api(P, { ...me, action: 'status' });
+  check(s.tasks.find((t) => t.id === 'e2e-a')?.done && !s.tasks.find((t) => t.id === 'e2e-b')?.done, 'double clic sur ☐ : une seule tâche cochée');
   check(s.tasks.find((t) => t.id === 'e2e-a')?.done && s.choice?.project === 'Heirfall' && s.choice?.type === 'Art', 'serveur : tâche cochée, le choix passe sur la suivante');
   check(await page.evaluate('document.querySelector(".pick.on").textContent') === 'Heirfall', 'le sélecteur suit la nouvelle tâche du haut');
+  await sleep(700); // un clic dans les 600 ms qui suivent une coche est ignoré
   await page.click('[data-act="checkTop"]');
   await page.waitFor('document.querySelector(".sync-ok") && document.querySelector(".tasks-link")', 'plus de tâche : lien « + Tâches »');
   check(/2 faites/.test(await page.evaluate('document.querySelector(".tasks-link").textContent')), 'le lien dit combien sont faites aujourd’hui');
@@ -331,6 +346,17 @@ async function main() {
   check(JSON.stringify(await rowTexts()) === JSON.stringify(['Tâche trois', 'Tâche un', 'Tâche deux']), 'glisser : l’ordre change tout de suite');
   await page.waitFor('document.querySelector(".sync-ok")', 'synchro');
   check(JSON.stringify(await todoOrder()) === JSON.stringify(['Tâche trois', 'Tâche un', 'Tâche deux']), 'serveur : ordre après glisser (moveTask)');
+  // Relâcher une poignée au-dessus du fond sombre ne ferme pas le panneau.
+  const dlgTop = await page.evaluate('document.querySelector("dialog .dlg").getBoundingClientRect().top');
+  if (dlgTop > 4) {
+    const g = await gripPoint(0);
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: g.x, y: g.y });
+    await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: g.x, y: g.y, button: 'left', clickCount: 1 });
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: g.x, y: g.y - 3, button: 'left' });
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: g.x, y: dlgTop - 2, button: 'left', clickCount: 1 });
+    await sleep(300);
+    check(await page.evaluate('document.querySelector("dialog").open'), 'glisser relâché sur le fond sombre : le panneau reste ouvert');
+  } else console.log('  (panneau plein écran : pas de fond sombre à viser)');
   // Un appui sur la ligne ouvre la fiche pré-remplie, avec Supprimer.
   await page.evaluate('[...document.querySelectorAll("dialog .task-todo .task-body")][1].click()');
   await page.waitFor('document.getElementById("task-desc")', 'fiche d’une tâche existante');

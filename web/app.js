@@ -66,6 +66,13 @@
   // ce qui tourne ; arrêté ou en pause, c'est ce que lancera ▶ ou Reprendre.
   function currentChoice() { return L.choiceOf(state.status); }
   function currentType() { return currentChoice().type; }
+  // Ce que le sélecteur montre et compare : le compteur en marche (hors pause) s'il y en a un — sa session
+  // a pu être corrigée —, sinon le choix.
+  function shownChoice() {
+    var r = state.status && state.status.running;
+    if (r && !L.isPause(r)) return { project: r.project, type: L.typeOf(r) };
+    return currentChoice();
+  }
 
   // ---- Réseau ----
 
@@ -402,7 +409,7 @@
   }
 
   function typeBar(s) {
-    var cur = currentType();
+    var cur = shownChoice().type;
     // Une rangée par famille de tâches : la première de chaque famille repart en début de ligne.
     var family = null;
     return '<div class="types">' + L.typesOf(s).filter(function (t) { return t.name !== L.PAUSE_TYPE; }).map(function (t) {
@@ -473,7 +480,7 @@
   // Le sélecteur : une ligne de petits boutons de projet. Toucher un projet change le choix (et
   // bascule le compteur s'il tourne) ; c'est ▶ qui lance.
   function picker(s) {
-    var chosen = currentChoice().project;
+    var chosen = shownChoice().project;
     var vp = L.visibleProjects(s, state.showStudio);
     var html = vp.shown.map(function (p) {
       return '<button class="pick' + (p === chosen ? ' on' : '') + '" data-act="selectProject" data-p="' + esc(p) + '">' + esc(p) + '</button>';
@@ -481,6 +488,10 @@
     if (vp.more.length) {
       var hidden = vp.more.indexOf(chosen) >= 0;
       html += '<button class="pick more' + (hidden ? ' on' : '') + '" data-act="more">' + (hidden ? esc(chosen) : 'Plus…') + '</button>';
+    }
+    // Le projet choisi peut être masqué (Studio par défaut) : on le montre quand même, plein.
+    if (vp.shown.indexOf(chosen) < 0 && vp.more.indexOf(chosen) < 0) {
+      html += '<button class="pick on" data-act="selectProject" data-p="' + esc(chosen) + '">' + esc(chosen) + '</button>';
     }
     return '<div class="picker">' + html + '</div>';
   }
@@ -523,10 +534,12 @@
 
   // ---- Fenêtres ----
 
+  // Fin du dernier glisser : relâcher au-dessus du fond sombre ne doit pas fermer le panneau.
+  var lastDragEnd = 0;
   var dlg = document.createElement('dialog');
   document.body.appendChild(dlg);
   dlg.addEventListener('cancel', function (e) { if (dlg.dataset.locked) e.preventDefault(); });
-  dlg.addEventListener('click', function (e) { if (e.target === dlg && !dlg.dataset.locked) closeDialog(); });
+  dlg.addEventListener('click', function (e) { if (e.target === dlg && !dlg.dataset.locked && Date.now() - lastDragEnd > 400) closeDialog(); });
   dlg.addEventListener('close', function () { state.forgotOpen = false; state.recap = null; state.sessions = null; state.tasks = null; });
 
   function openDialog(html, locked) {
@@ -573,17 +586,27 @@
 
   // ---- Actions de l'interface ----
 
+  // Une coche re-dessine tout de suite : un deuxième clic tomberait sur la case de la tâche suivante.
+  // On ignore le 2e clic d'un double clic et tout clic dans les 600 ms qui suivent une coche.
+  var lastCheckAt = 0;
+  function checkAllowed(e) {
+    if (e && e.detail > 1) return false;
+    if (Date.now() - lastCheckAt < 600) return false;
+    lastCheckAt = Date.now();
+    return true;
+  }
+
   var handlers = {
     close: closeDialog,
 
     // Activité : change le choix ; le serveur bascule le compteur s'il tourne (hors pause).
     type: function (el) {
-      if (el.dataset.t !== currentType()) act('select', { type: el.dataset.t });
+      if (el.dataset.t !== shownChoice().type) act('select', { type: el.dataset.t });
     },
 
     selectProject: function (el) {
       closeDialog();
-      if (el.dataset.p !== currentChoice().project) act('select', { project: el.dataset.p });
+      if (el.dataset.p !== shownChoice().project) act('select', { project: el.dataset.p });
     },
 
     // ▶ : lance le compteur sur le choix.
@@ -630,6 +653,9 @@
         act('addTask', { id: uid(), description: description, project: form.project, type: form.type });
       } else if (t && (description !== t.description || form.project !== t.project || form.type !== L.typeOf(t))) {
         act('editTask', { id: form.id, description: description, project: form.project, type: form.type });
+      } else if (form.id && !t) {
+        paintTasks();
+        toast('Cette tâche n’existe plus.');
       } else {
         paintTasks();
       }
@@ -639,11 +665,11 @@
       state.tasks.form = null;
       act('deleteTask', { id: id });
     },
-    taskCheck: function (el) { act('checkTask', { id: el.dataset.id }); },
+    taskCheck: function (el, e) { if (checkAllowed(e)) act('checkTask', { id: el.dataset.id }); },
     taskUncheck: function (el) { act('uncheckTask', { id: el.dataset.id }); },
 
-    checkTop: function (el) {
-      act('checkTask', { id: el.dataset.id });
+    checkTop: function (el, e) {
+      if (checkAllowed(e)) act('checkTask', { id: el.dataset.id });
     },
 
     stop: function () { act('stop', {}); },
@@ -1118,7 +1144,7 @@
   // liste défile normalement. La ligne suit le doigt, les autres s'écartent ; au relâchement, moveTask.
   document.addEventListener('pointerdown', function (e) {
     var grip = e.target.closest && e.target.closest('.grip');
-    if (!grip || !state.tasks || e.button > 0) return;
+    if (!grip || !state.tasks || state.tasks.dragging || e.button > 0) return;
     e.preventDefault();
     startTaskDrag(e, grip.closest('.task'));
   });
@@ -1154,7 +1180,8 @@
       document.removeEventListener('pointerup', end);
       document.removeEventListener('pointercancel', end);
       document.body.classList.remove('dragging-task');
-      state.tasks.dragging = false;
+      lastDragEnd = Date.now();
+      if (state.tasks) state.tasks.dragging = false;
       var ids = rows.map(function (r) { return r.dataset.id; });
       var id = ids[from];
       var others = ids.filter(function (x) { return x !== id; });
@@ -1176,7 +1203,7 @@
     var el = e.target.closest('[data-act]');
     if (!el || !handlers[el.dataset.act]) return;
     if (!state.status && WITHOUT_STATUS.indexOf(el.dataset.act) < 0) return;
-    handlers[el.dataset.act](el);
+    handlers[el.dataset.act](el, e);
   });
 
   document.addEventListener('submit', function (e) {
