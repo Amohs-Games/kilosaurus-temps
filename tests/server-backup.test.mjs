@@ -71,7 +71,7 @@ test('figer : supprimées comprises, sans compter dans le total', async () => {
   assert.notEqual(sqlite.prepare("SELECT deleted_ms FROM archive_entries WHERE id = 'b2'").get().deleted_ms, null);
 });
 
-test('figer : 20 jours au plus par appel, sous 50 requêtes, le reste au suivant', async () => {
+test('figer : 14 jours au plus par appel, sous 50 requêtes, le reste au suivant', async () => {
   const { sqlite, env } = await makeEnv();
   for (let i = 1; i <= 25; i++) {
     const d = `2026-09-${String(i).padStart(2, '0')}`;
@@ -87,12 +87,38 @@ test('figer : 20 jours au plus par appel, sous 50 requêtes, le reste au suivant
   const now = at('2026-10-01T09:00:00+02:00');
   const first = await freezeDays({ db, now });
   assert.equal(first.frozen.length, FREEZE_DAYS_PER_RUN);
-  assert.equal(first.through, '2026-09-20');
+  assert.equal(first.through, '2026-09-14');
   assert.ok(queries <= 50, `${queries} requêtes`);
   const second = await freezeDays({ db: env.db, now });
-  assert.deepEqual(second.frozen, ['2026-09-21', '2026-09-22', '2026-09-23', '2026-09-24', '2026-09-25']);
+  assert.deepEqual(second.frozen, ['2026-09-15', '2026-09-16', '2026-09-17', '2026-09-18', '2026-09-19', '2026-09-20', '2026-09-21', '2026-09-22', '2026-09-23', '2026-09-24', '2026-09-25']);
   assert.equal(second.through, '2026-09-30');
   assert.equal(count(sqlite, 'SELECT COUNT(*) n FROM archive_days'), 25);
+});
+
+test('figer : une tâche cochée le jour J est copiée avec la journée, et l’archive ne bouge plus', async () => {
+  const { call, sqlite, env, clock } = await makeEnv();
+  ok(await call('addTask', { id: 't1', description: 'Avant', project: 'Studio', type: 'Social' }));
+  ok(await call('checkTask', { id: 't1' }));
+  ok(await call('logBlock', { id: 'b1', project: 'Fluffy', hours: 2 }));
+  assert.equal(sqlite.prepare("SELECT done_day FROM tasks WHERE id = 't1'").get().done_day, '2026-10-01');
+  clock.set('2026-10-02T06:00:00+02:00');
+  assert.deepEqual((await freezeDays({ db: env.db, now: clock.now() })).frozen, ['2026-10-01']);
+  const archived = sqlite.prepare("SELECT * FROM archive_tasks WHERE id = 't1'").get();
+  assert.equal(archived.archived_day, '2026-10-01');
+  assert.equal(archived.description, 'Avant');
+  ok(await call('editTask', { id: 't1', description: 'Après' }));
+  assert.equal(sqlite.prepare("SELECT description FROM archive_tasks WHERE id = 't1'").get().description, 'Avant');
+  assert.equal(count(sqlite, 'SELECT COUNT(*) n FROM archive_tasks'), 1);
+});
+
+test('figer : un jour avec seulement une tâche cochée est figé quand même', async () => {
+  const { call, sqlite, env, clock } = await makeEnv();
+  ok(await call('addTask', { id: 't1', description: 'Seule', project: 'Studio', type: 'Social' }));
+  ok(await call('checkTask', { id: 't1' }));
+  clock.set('2026-10-02T06:00:00+02:00');
+  assert.deepEqual((await freezeDays({ db: env.db, now: clock.now() })).frozen, ['2026-10-01']);
+  assert.equal(sqlite.prepare("SELECT row_count FROM archive_days WHERE day = '2026-10-01'").get().row_count, 0);
+  assert.equal(count(sqlite, 'SELECT COUNT(*) n FROM archive_tasks'), 1);
 });
 
 test('export : pages sans trou ni doublon, tables et tailles contrôlées', async () => {

@@ -26,8 +26,9 @@ const WRITE_ACTIONS = ['start', 'stop', 'note', 'logBlock', 'logSession', 'addPr
   'addTask', 'editTask', 'deleteTask', 'moveTask', 'checkTask', 'uncheckTask'];
 
 // Sauvegardes. Un appel de Worker a droit à 50 requêtes D1 sur l'offre gratuite (chaque instruction
-// d'un batch compte) : figer un jour en coûte 2, d'où 20 jours au plus par appel.
-export const FREEZE_DAYS_PER_RUN = 20;
+// d'un batch compte) : figer un jour en coûte 3 (lignes, tâches, résumé), d'où 14 jours au
+// plus par appel (1 + 1 + 1 + 14 × 3 + 1 = 46 requêtes).
+export const FREEZE_DAYS_PER_RUN = 14;
 const FREEZE_GRACE_MS = 2 * 3600000; // un jour fini depuis plus de 2 h et pas figé déclenche l'alerte
 const EXPORT_PAGE = 200;             // un appel de Worker a 10 ms de calcul : des pages courtes
 const NEVER = '0000-00-00';
@@ -357,12 +358,14 @@ function settingWrite(key, value) {
   return { sql: 'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', params: [key, value] };
 }
 
-// Les lignes d'un jour (supprimées comprises) copiées dans l'archive, et son résumé : une seule
+// Les lignes et les tâches cochées d'un jour (supprimées comprises) copiées dans l'archive, et son résumé : une seule
 // transaction. Tout se passe dans la base : le coût pour le Worker ne grandit pas avec l'historique.
 function freezeStatements(day, nowMs) {
   const cols = ENTRY_COLUMNS.join(', ');
+  const taskCols = TASK_COLUMNS.join(', ');
   return [
     { sql: `INSERT INTO archive_entries (archived_day, ${cols}) SELECT day, ${cols} FROM entries WHERE day = ?`, params: [day] },
+    { sql: `INSERT INTO archive_tasks (archived_day, ${taskCols}) SELECT ?, ${taskCols} FROM tasks WHERE done_day = ?`, params: [day, day] },
     {
       sql: `INSERT INTO archive_days (day, archived_ms, row_count, hours)
             SELECT ?, ?, COUNT(*), COALESCE(SUM(CASE WHEN deleted_ms IS NOT NULL THEN 0 WHEN kind = 'block' THEN hours
@@ -382,8 +385,9 @@ export async function freezeDays({ db, now }) {
   const lastFinished = previousDayKey(workDayKey(now));
   if (through >= lastFinished) return { frozen: [], through };
   const days = (await db.all(
-    'SELECT DISTINCT day FROM entries WHERE day > ? AND day <= ? ORDER BY day LIMIT ?',
-    [through, lastFinished, FREEZE_DAYS_PER_RUN],
+    `SELECT day FROM (SELECT DISTINCT day FROM entries WHERE day > ? AND day <= ?
+      UNION SELECT DISTINCT done_day AS day FROM tasks WHERE done_day > ? AND done_day <= ?) ORDER BY day LIMIT ?`,
+    [through, lastFinished, through, lastFinished, FREEZE_DAYS_PER_RUN],
   )).map((r) => r.day);
   const already = new Set((await db.all('SELECT day FROM archive_days WHERE day > ? AND day <= ?', [through, lastFinished])).map((r) => r.day));
   const frozen = [];

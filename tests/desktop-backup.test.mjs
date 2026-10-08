@@ -118,6 +118,9 @@ test('restauration : aller-retour identique, table par table', async () => {
   ok(await call('deleteEntry', { id: 'b2' }));
   const s = ok(await call('status'));
   ok(await call('undo', { opId: s.undo.opId }));
+  ok(await call('addTask', { id: 't1', description: 'Faite 🦖', project: 'Studio', type: 'Social' }));
+  ok(await call('addTask', { id: 't2', description: 'À faire', project: 'Fluffy', type: 'Art' }));
+  ok(await call('checkTask', { id: 't1' }));
   clock.set('2026-10-02T07:00:00+02:00');
   await freezeDays({ db: env.db, now: clock.now() });
   ok(await call('backupDone', { day: '2026-10-01' }));
