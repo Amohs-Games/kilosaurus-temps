@@ -31,6 +31,7 @@
     { name: 'Pause', color: '#94A3B8', family: 'pause' },
   ];
   var DEFAULT_TYPE = 'Misc';
+  var PAUSE_NAME = 'Pause';
   // Noms de la première version, encore possibles dans un état ou un réglage mis en cache.
   var LEGACY_TYPES = { Autre: 'Misc', Narration: 'Writing' };
   var HOUR = 3600000;
@@ -169,6 +170,184 @@
     s.today.push(row);
   }
 
+  var TASK_ACTIONS = ['select', 'addTask', 'editTask', 'deleteTask', 'moveTask', 'checkTask', 'uncheckTask'];
+  var WORKDAY_HOUR = 6;
+  var MAX_SESSION_MS = 24 * HOUR;
+  var MAX_DESCRIPTION = 200;
+
+  function isPauseType(type) { return canonicalType(type) === PAUSE_NAME; }
+
+  // Jour de travail : de 6 h à 6 h le lendemain, à l’heure locale de l’appareil. Avant 6 h du matin,
+  // c’est encore celui de la veille.
+  function workDayKey(ms) {
+    var d = new Date(ms);
+    if (d.getHours() < WORKDAY_HOUR) d.setDate(d.getDate() - 1);
+    return dayKey(d);
+  }
+  function workDayStart(key) {
+    var p = key.split('-');
+    return new Date(+p[0], +p[1] - 1, +p[2], WORKDAY_HOUR, 0, 0, 0).getTime();
+  }
+
+  // À faire (ordre de la liste : position, puis ordre du tableau). Tolère un état sans `tasks`.
+  function todoTasks(s) {
+    return ((s && s.tasks) || [])
+      .map(function (t, i) { return { t: t, i: i }; })
+      .filter(function (x) { return !x.t.done; })
+      .sort(function (a, b) { return (a.t.position - b.t.position) || (a.i - b.i); })
+      .map(function (x) { return x.t; });
+  }
+  // Faites (ordre des coches).
+  function doneTasks(s) {
+    return ((s && s.tasks) || []).filter(function (t) { return !!t.done; })
+      .sort(function (a, b) { return new Date(a.done).getTime() - new Date(b.done).getTime(); });
+  }
+  // La tâche du haut : la première à faire.
+  function topTask(s) { return todoTasks(s)[0] || null; }
+
+  // Le choix partagé (projet, activité) : celui du serveur s’il existe ; sinon (ancien état en cache)
+  // le compteur en cours hors pause, le dernier travaillé, le premier projet. Activité par défaut : Misc.
+  function choiceOf(s) {
+    if (s && s.choice) return { project: s.choice.project, type: canonicalType(s.choice.type || DEFAULT_TYPE) };
+    var projects = (s && s.projects) || [];
+    var from = s && s.running && !isPause(s.running) ? s.running : (s && s.last);
+    if (from && projects.indexOf(from.project) >= 0) {
+      return { project: from.project, type: isPause(from) ? DEFAULT_TYPE : typeOf(from) };
+    }
+    return { project: projects[0] || '', type: DEFAULT_TYPE };
+  }
+
+  // Bascule locale du compteur en marche vers (project, type) à l’instant `atMs`. Rien sans compteur,
+  // en pause, déjà sur ce choix, ou compteur oublié (plus de 24 h) : seul le choix change alors.
+  function switchRunning(s, project, type, atMs) {
+    var run = s.running;
+    if (!run || isPause(run)) return;
+    if (run.project === project && typeOf(run) === type) return;
+    var runStart = new Date(run.start).getTime();
+    var start = Math.max(atMs, runStart);
+    if (start - runStart > MAX_SESSION_MS) return;
+    var startIso = new Date(start).toISOString();
+    run.end = startIso;
+    run.hours = hoursBetween(run.start, startIso);
+    s.last = run;
+    upsertToday(s, run);
+    s.running = {
+      id: 'local-' + start + '-' + project + '-' + type, project: project, type: type, date: dayKey(start), start: startIso,
+      end: null, hours: null, note: '', source: 'app', corrected: false,
+    };
+    upsertToday(s, s.running);
+  }
+
+  // Règle de la tâche du haut : si elle change (autre tâche, ou même tâche avec un autre projet ou une
+  // autre activité), son projet et son activité deviennent le choix et le compteur en marche bascule.
+  function applyTopRule(s, before, atMs) {
+    var after = topTask(s);
+    if (!after) return;
+    if (before && before.id === after.id && before.project === after.project && before.type === canonicalType(after.type)) return;
+    var type = canonicalType(after.type);
+    s.choice = { project: after.project, type: type };
+    switchRunning(s, after.project, type, atMs);
+  }
+
+  function findTask(s, id) {
+    var list = (s && s.tasks) || [];
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+    return null;
+  }
+
+  // Applique une action de tâche ou de choix à `s` (déjà copié). Renvoie false si l’action n’a pas lieu
+  // (invalide ou sans effet), comme le serveur qui la refuse ou l’ignore.
+  function applyTaskAction(s, item) {
+    var p = item.params || {};
+    var atMs = item.clientTime ? new Date(item.clientTime).getTime() : Date.now();
+    var action = item.action;
+    var cur = choiceOf(s);
+    var top = topTask(s);
+    var before = top ? { id: top.id, project: top.project, type: canonicalType(top.type) } : null;
+    var task;
+
+    if (action === 'select') {
+      var project = p.project === undefined ? cur.project : p.project;
+      var type = p.type === undefined || p.type === null ? cur.type : canonicalType(p.type);
+      if ((s.projects || []).indexOf(project) < 0 || isPauseType(type)) return false;
+      s.choice = { project: project, type: type };
+      switchRunning(s, project, type, atMs);
+      return true;
+    }
+    if (!s.tasks) s.tasks = [];
+
+    if (action === 'addTask') {
+      var description = typeof p.description === 'string' ? p.description.trim() : '';
+      if (!p.id || !description || description.length > MAX_DESCRIPTION || findTask(s, p.id)) return false;
+      var taskProject = p.project === undefined || p.project === null ? cur.project : p.project;
+      var taskType = p.type === undefined || p.type === null ? cur.type : canonicalType(p.type);
+      if ((s.projects || []).indexOf(taskProject) < 0 || isPauseType(taskType)) return false;
+      var todo = todoTasks(s);
+      var position = todo.length ? todo.reduce(function (m, t) { return Math.max(m, t.position); }, 0) + 1 : 1;
+      s.tasks.push({ id: p.id, description: description, project: taskProject, type: taskType, position: position, done: null, started: null });
+    } else if (action === 'editTask') {
+      task = findTask(s, p.id);
+      if (!task) return false;
+      var next = { description: task.description, project: task.project, type: task.type };
+      if (p.description !== undefined) {
+        next.description = typeof p.description === 'string' ? p.description.trim() : '';
+        if (!next.description || next.description.length > MAX_DESCRIPTION) return false;
+      }
+      if (p.project !== undefined) {
+        if ((s.projects || []).indexOf(p.project) < 0) return false;
+        next.project = p.project;
+      }
+      if (p.type !== undefined) {
+        next.type = canonicalType(p.type);
+        if (isPauseType(next.type)) return false;
+      }
+      if (next.description === task.description && next.project === task.project && next.type === task.type) return false;
+      task.description = next.description;
+      task.project = next.project;
+      task.type = next.type;
+    } else if (action === 'deleteTask') {
+      task = findTask(s, p.id);
+      if (!task) return false;
+      s.tasks = s.tasks.filter(function (t) { return t !== task; });
+    } else if (action === 'moveTask') {
+      task = findTask(s, p.id);
+      var dest = p.before === undefined ? null : p.before;
+      if (!task || task.done || (dest !== null && (typeof dest !== 'string' || dest === task.id))) return false;
+      var current = todoTasks(s);
+      var others = current.filter(function (t) { return t !== task; });
+      var index = others.length;
+      if (dest !== null) {
+        index = -1;
+        others.forEach(function (t, i) { if (t.id === dest) index = i; });
+        if (index < 0) return false;
+      }
+      var order = others.slice(0, index).concat([task], others.slice(index));
+      if (order.every(function (t, i) { return t === current[i]; })) return false;
+      order.forEach(function (t, i) { t.position = i + 1; });
+    } else if (action === 'checkTask') {
+      task = findTask(s, p.id);
+      if (!task || task.done) return false;
+      // Coche précédente du même jour de travail, sinon 6 h : début de la tâche cochée.
+      var doneDay = workDayKey(atMs);
+      var previous = 0;
+      s.tasks.forEach(function (t) {
+        var d = t.done ? new Date(t.done).getTime() : 0;
+        if (t !== task && d && d <= atMs && workDayKey(d) === doneDay && d > previous) previous = d;
+      });
+      task.done = new Date(atMs).toISOString();
+      task.started = new Date(previous || workDayStart(doneDay)).toISOString();
+    } else if (action === 'uncheckTask') {
+      task = findTask(s, p.id);
+      if (!task || !task.done) return false;
+      task.done = null;
+      task.started = null;
+    } else {
+      return false;
+    }
+    applyTopRule(s, before, atMs);
+    return true;
+  }
+
   /**
    * Applique une action à l'état affiché, avant la réponse du serveur (interface optimiste).
    * Reprend les règles du serveur ; la réponse du serveur remplace ensuite cet état.
@@ -196,6 +375,7 @@
         hours: null, note: p.note || '', source: 'app', corrected: false,
       };
       upsertToday(s, s.running);
+      if (type !== PAUSE_NAME) s.choice = { project: p.project, type: type };
     } else if (item.action === 'stop') {
       if (!s.running) return s;
       var end = p.endAt || at;
@@ -215,6 +395,8 @@
       if (s.last.date === dayKey(at)) upsertToday(s, s.last);
     } else if (item.action === 'addProject') {
       if (s.projects.indexOf(p.name) < 0) s.projects.push(p.name);
+    } else if (TASK_ACTIONS.indexOf(item.action) >= 0) {
+      if (!applyTaskAction(s, item)) return status;
     }
     return s;
   }
@@ -354,7 +536,7 @@
     BLOCK_HOURS: BLOCK_HOURS, DEFAULT_TYPES: DEFAULT_TYPES, dayKey: dayKey, hoursBetween: hoursBetween,
     elapsed: elapsed, duration: duration, clock: clock, dayLabel: dayLabel,
     entryEdit: entryEdit, isLong: isLong, forgotMax: forgotMax, visibleProjects: visibleProjects, pickableProjects: pickableProjects,
-    isForgotten: isForgotten, applyLocal: applyLocal,
+    isForgotten: isForgotten, applyLocal: applyLocal, todoTasks: todoTasks, doneTasks: doneTasks, topTask: topTask, choiceOf: choiceOf,
     typesOf: typesOf, typeOf: typeOf, typeColor: typeColor, textOn: textOn, projectColor: projectColor, isPause: isPause, todayPause: todayPause, sessionOf: sessionOf, PAUSE_TYPE: PAUSE_TYPE, rowHours: rowHours, todayTotal: todayTotal, todayWorked: todayWorked,
     dayTimeline: dayTimeline, weekRange: weekRange, monthRange: monthRange, aggregate: aggregate, recapMatches: recapMatches, backupWarnings: backupWarnings,
   };

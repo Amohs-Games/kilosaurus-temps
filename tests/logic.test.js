@@ -276,3 +276,231 @@ test('alertes de sauvegarde', () => {
     'Journées non figées depuis le 03/10.',
   ]);
 });
+
+// ---- Tâches et choix partagé (rejoue les scénarios du serveur) ----
+
+const T0 = '2026-10-01T10:00:00+02:00';
+const T1 = '2026-10-01T10:30:00+02:00';
+const T2 = '2026-10-01T11:00:00+02:00';
+const act = (s, action, params, clientTime) => L.applyLocal(s, { action, params, clientTime: clientTime || T1 });
+const withTasks = () => Object.assign(base(), { tasks: [], choice: { project: 'Fluffy', type: 'Misc' } });
+const todoIds = (s) => L.todoTasks(s).map((t) => t.id);
+
+test('choiceOf : le choix du statut, sinon le compteur hors pause, sinon le dernier, sinon le premier projet', () => {
+  assert.deepEqual(L.choiceOf(withTasks()), { project: 'Fluffy', type: 'Misc' });
+  const running = { project: 'Jam', type: 'Dev', start: T0 };
+  assert.deepEqual(L.choiceOf(Object.assign(base(), { running })), { project: 'Jam', type: 'Dev' });
+  const pause = { project: 'Jam', type: 'Pause', start: T0 };
+  const last = { project: 'Proto', type: 'Art' };
+  assert.deepEqual(L.choiceOf(Object.assign(base(), { running: pause, last })), { project: 'Proto', type: 'Art' });
+  assert.deepEqual(L.choiceOf(Object.assign(base(), { last: { project: 'Proto', type: 'Pause' } })), { project: 'Proto', type: 'Misc' });
+  assert.deepEqual(L.choiceOf(base()), { project: 'Fluffy', type: 'Misc' });
+  assert.deepEqual(L.choiceOf(null), { project: '', type: 'Misc' });
+});
+
+test('un ancien état sans tasks ni choice ne casse rien', () => {
+  const s = base();
+  assert.deepEqual(L.todoTasks(s), []);
+  assert.deepEqual(L.doneTasks(s), []);
+  assert.equal(L.topTask(s), null);
+  for (const action of ['checkTask', 'uncheckTask', 'deleteTask', 'editTask']) {
+    assert.doesNotThrow(() => L.applyLocal(s, { action, params: { id: 'x' }, clientTime: T1 }));
+  }
+  assert.doesNotThrow(() => L.applyLocal(s, { action: 'moveTask', params: { id: 'x', before: null }, clientTime: T1 }));
+  const a = act(s, 'addTask', { id: 'a', description: 'A' });
+  assert.equal(a.tasks.length, 1);
+  assert.deepEqual(a.choice, { project: 'Fluffy', type: 'Misc' });
+});
+
+test('select : change le choix ; compteur en marche bascule, en pause ou arrêté seul le choix change', () => {
+  let s = act(withTasks(), 'start', { id: 'r1', project: 'Fluffy', type: 'Dev' }, T0);
+  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Dev' });
+  s = act(s, 'select', { project: 'Jam', type: 'Art' }, T1);
+  assert.deepEqual(s.choice, { project: 'Jam', type: 'Art' });
+  assert.equal(s.running.project, 'Jam');
+  assert.equal(s.running.type, 'Art');
+  assert.equal(s.running.start, new Date(T1).toISOString());
+  assert.equal(s.last.id, 'r1');
+  assert.equal(s.last.end, new Date(T1).toISOString());
+  assert.notEqual(s.running.id, 'r1');
+  // en pause : le choix seul
+  let p = act(withTasks(), 'start', { id: 'p1', project: 'Fluffy', type: 'Pause' }, T0);
+  assert.deepEqual(p.choice, { project: 'Fluffy', type: 'Misc' }, 'start en pause ne touche pas le choix');
+  p = act(p, 'select', { project: 'Jam' }, T1);
+  assert.deepEqual(p.choice, { project: 'Jam', type: 'Misc' });
+  assert.equal(p.running.id, 'p1');
+  // arrêté : le choix seul, aucune session
+  const a = act(withTasks(), 'select', { type: 'Sound' });
+  assert.deepEqual(a.choice, { project: 'Fluffy', type: 'Sound' });
+  assert.equal(a.running, null);
+  // Pause n'est pas une activité à choisir
+  assert.deepEqual(act(withTasks(), 'select', { type: 'Pause' }).choice, { project: 'Fluffy', type: 'Misc' });
+});
+
+test('start met à jour le choix partagé', () => {
+  const s = act(base(), 'start', { id: 'a', project: 'Jam', type: 'Sound' }, T0);
+  assert.deepEqual(s.choice, { project: 'Jam', type: 'Sound' });
+});
+
+test('addTask : liste vide + compteur arrêté, le choix devient celui de la tâche', () => {
+  const s = act(withTasks(), 'addTask', { id: 'a', description: '  Appel avec Léa ', project: 'Studio', type: 'Social' });
+  assert.deepEqual(s.tasks, [{ id: 'a', description: 'Appel avec Léa', project: 'Studio', type: 'Social', position: 1, done: null, started: null }]);
+  assert.deepEqual(s.choice, { project: 'Studio', type: 'Social' });
+  assert.equal(s.running, null);
+});
+
+test('addTask : défaut = le choix ; une deuxième tâche ne change pas le choix ; Pause refusée', () => {
+  let s = act(withTasks(), 'select', { project: 'Studio', type: 'Art' });
+  s = act(s, 'addTask', { id: 'a', description: 'A' });
+  assert.equal(s.tasks[0].project, 'Studio');
+  assert.equal(s.tasks[0].type, 'Art');
+  s = act(s, 'addTask', { id: 'b', description: 'B', project: 'Fluffy', type: 'Dev' });
+  assert.deepEqual(s.choice, { project: 'Studio', type: 'Art' });
+  assert.deepEqual(s.tasks.map((t) => t.position), [1, 2]);
+  assert.equal(act(s, 'addTask', { id: 'c', description: 'C', type: 'Pause' }).tasks.length, 2);
+  assert.equal(act(s, 'addTask', { id: 'a', description: 'doublon' }).tasks.length, 2);
+  assert.equal(act(s, 'addTask', { id: 'd', description: '   ' }).tasks.length, 2);
+});
+
+function twoTasksRunning() {
+  let s = act(withTasks(), 'start', { id: 'r0', project: 'Studio', type: 'Social' }, T0);
+  s = act(s, 'addTask', { id: 'A', description: 'A', project: 'Studio', type: 'Social' }, T0);
+  s = act(s, 'addTask', { id: 'B', description: 'B', project: 'Fluffy', type: 'Art' }, T0);
+  return s;
+}
+
+test('checkTask compteur en marche : bascule à la même seconde sur la tâche suivante', () => {
+  const s = act(twoTasksRunning(), 'checkTask', { id: 'A' }, T1);
+  const a = s.tasks.find((t) => t.id === 'A');
+  assert.equal(a.done, new Date(T1).toISOString());
+  assert.equal(a.started, new Date('2026-10-01T06:00:00+02:00').toISOString());
+  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Art' });
+  assert.equal(s.running.project, 'Fluffy');
+  assert.equal(s.running.type, 'Art');
+  assert.equal(s.running.start, new Date(T1).toISOString());
+  assert.equal(s.last.id, 'r0');
+  assert.equal(s.last.end, s.running.start);
+  assert.deepEqual(todoIds(s), ['B']);
+  assert.deepEqual(L.doneTasks(s).map((t) => t.id), ['A']);
+  assert.equal(L.topTask(s).id, 'B');
+});
+
+test('checkTask : started = la coche précédente du même jour de travail', () => {
+  let s = act(twoTasksRunning(), 'checkTask', { id: 'A' }, T1);
+  s = act(s, 'checkTask', { id: 'B' }, T2);
+  const b = s.tasks.find((t) => t.id === 'B');
+  assert.equal(b.started, new Date(T1).toISOString());
+  assert.equal(b.done, new Date(T2).toISOString());
+  assert.deepEqual(L.doneTasks(s).map((t) => t.id), ['A', 'B']);
+});
+
+test('checkTask entre minuit et 6 h : encore le jour de travail de la veille', () => {
+  let s = act(withTasks(), 'addTask', { id: 'A', description: 'A' }, T0);
+  s = act(s, 'checkTask', { id: 'A' }, '2026-10-02T02:00:00+02:00');
+  assert.equal(s.tasks[0].started, new Date('2026-10-01T06:00:00+02:00').toISOString());
+});
+
+test('checkTask : compteur en pause ou arrêté, le choix seul ; dernière tâche cochée, le choix reste', () => {
+  let s = act(withTasks(), 'addTask', { id: 'A', description: 'A', project: 'Studio', type: 'Social' }, T0);
+  s = act(s, 'addTask', { id: 'B', description: 'B', project: 'Fluffy', type: 'Art' }, T0);
+  s = act(s, 'checkTask', { id: 'A' }, T1);
+  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Art' });
+  assert.equal(s.running, null);
+  let p = act(twoTasksRunning(), 'start', { id: 'p', project: 'Studio', type: 'Pause' }, T0);
+  p = act(p, 'checkTask', { id: 'A' }, T1);
+  assert.deepEqual(p.choice, { project: 'Fluffy', type: 'Art' });
+  assert.equal(p.running.id, 'p');
+  const last = act(s, 'checkTask', { id: 'B' }, T2);
+  assert.equal(L.topTask(last), null);
+  assert.deepEqual(last.choice, { project: 'Fluffy', type: 'Art' });
+});
+
+test('choix manuel respecté : modifier une tâche qui n’est pas en haut ne le change pas', () => {
+  let s = twoTasksRunning();
+  s = act(s, 'addTask', { id: 'C', description: 'C', project: 'Studio', type: 'Dev' }, T0);
+  s = act(s, 'checkTask', { id: 'A' }, T1);
+  s = act(s, 'select', { project: 'Studio' }, T1);
+  assert.equal(s.choice.project, 'Studio');
+  const before = s.choice;
+  s = act(s, 'editTask', { id: 'C', description: 'C bis', type: 'Writing' }, T2);
+  assert.deepEqual(s.choice, before, 'la tâche du haut (B) n’a pas changé');
+  assert.equal(s.tasks.find((t) => t.id === 'C').description, 'C bis');
+});
+
+test('editTask de la tâche du haut : le choix suit et le compteur bascule', () => {
+  let s = act(withTasks(), 'addTask', { id: 'A', description: 'A', project: 'Fluffy', type: 'Dev' }, T0);
+  s = act(s, 'start', { id: 'r', project: 'Fluffy', type: 'Dev' }, T0);
+  s = act(s, 'editTask', { id: 'A', type: 'Art' }, T1);
+  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Art' });
+  assert.equal(s.running.type, 'Art');
+  assert.equal(s.last.id, 'r');
+  assert.equal(act(s, 'editTask', { id: 'A', type: 'Pause' }).tasks[0].type, 'Art');
+});
+
+test('editTask sans changement ou description seule : le choix ne bouge pas', () => {
+  let s = act(withTasks(), 'addTask', { id: 'A', description: 'A', project: 'Fluffy', type: 'Dev' }, T0);
+  s = act(s, 'select', { project: 'Jam' }, T0);
+  const same = act(s, 'editTask', { id: 'A', description: ' A ', project: 'Fluffy' });
+  assert.deepEqual(same.choice, { project: 'Jam', type: 'Dev' });
+  const renamed = act(s, 'editTask', { id: 'A', description: 'Autre' });
+  assert.equal(renamed.tasks[0].description, 'Autre');
+  assert.deepEqual(renamed.choice, { project: 'Jam', type: 'Dev' });
+  assert.equal(act(s, 'editTask', { id: 'zzz', description: 'x' }).tasks.length, 1);
+});
+
+test('moveTask qui met B en haut : bascule sur B ; positions renumérotées ; sans changement rien', () => {
+  let s = act(withTasks(), 'addTask', { id: 'A', description: 'A', project: 'Studio', type: 'Social' }, T0);
+  s = act(s, 'addTask', { id: 'B', description: 'B', project: 'Fluffy', type: 'Art' }, T0);
+  s = act(s, 'addTask', { id: 'C', description: 'C', project: 'Fluffy', type: 'Dev' }, T0);
+  assert.deepEqual(s.choice, { project: 'Studio', type: 'Social' });
+  assert.deepEqual(todoIds(act(s, 'moveTask', { id: 'A', before: 'B' })), ['A', 'B', 'C']);
+  s = act(s, 'moveTask', { id: 'B', before: 'A' });
+  assert.deepEqual(todoIds(s), ['B', 'A', 'C']);
+  assert.deepEqual(s.tasks.map((t) => t.position).sort(), [1, 2, 3]);
+  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Art' });
+  s = act(s, 'moveTask', { id: 'B', before: null });
+  assert.deepEqual(todoIds(s), ['A', 'C', 'B']);
+  assert.deepEqual(s.choice, { project: 'Studio', type: 'Social' });
+  assert.deepEqual(todoIds(act(s, 'moveTask', { id: 'A', before: 'A' })), ['A', 'C', 'B']);
+  assert.deepEqual(todoIds(act(s, 'moveTask', { id: 'A', before: 'nope' })), ['A', 'C', 'B']);
+});
+
+test('deleteTask de la tâche du haut : la suivante s’applique ; la dernière : rien ne change', () => {
+  let s = act(withTasks(), 'addTask', { id: 'A', description: 'A', project: 'Studio', type: 'Social' }, T0);
+  s = act(s, 'addTask', { id: 'B', description: 'B', project: 'Fluffy', type: 'Art' }, T0);
+  s = act(s, 'deleteTask', { id: 'A' });
+  assert.deepEqual(todoIds(s), ['B']);
+  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Art' });
+  s = act(s, 'select', { project: 'Studio', type: 'Dev' });
+  s = act(s, 'deleteTask', { id: 'B' });
+  assert.deepEqual(s.tasks, []);
+  assert.deepEqual(s.choice, { project: 'Studio', type: 'Dev' });
+});
+
+test('uncheckTask : la tâche revient à sa place et s’applique si elle redevient en haut', () => {
+  let s = act(withTasks(), 'addTask', { id: 'A', description: 'A', project: 'Studio', type: 'Social' }, T0);
+  s = act(s, 'addTask', { id: 'B', description: 'B', project: 'Fluffy', type: 'Art' }, T0);
+  s = act(s, 'checkTask', { id: 'A' }, T1);
+  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Art' });
+  s = act(s, 'uncheckTask', { id: 'A' }, T2);
+  const a = s.tasks.find((t) => t.id === 'A');
+  assert.equal(a.done, null);
+  assert.equal(a.started, null);
+  assert.deepEqual(todoIds(s), ['A', 'B']);
+  assert.deepEqual(s.choice, { project: 'Studio', type: 'Social' });
+  assert.equal(act(s, 'uncheckTask', { id: 'A' }, T2).tasks.length, 2);
+});
+
+test('compteur oublié (plus de 24 h) : le choix change, pas de bascule', () => {
+  let s = act(withTasks(), 'start', { id: 'r', project: 'Fluffy', type: 'Dev' }, '2026-09-29T09:00:00+02:00');
+  s = act(s, 'addTask', { id: 'A', description: 'A', project: 'Jam', type: 'Art' }, T1);
+  assert.deepEqual(s.choice, { project: 'Jam', type: 'Art' });
+  assert.equal(s.running.id, 'r');
+});
+
+test('les actions de tâche ne modifient pas l’état d’origine', () => {
+  const s0 = twoTasksRunning();
+  const snap = JSON.stringify(s0);
+  act(s0, 'checkTask', { id: 'A' }, T1);
+  assert.equal(JSON.stringify(s0), snap);
+});
