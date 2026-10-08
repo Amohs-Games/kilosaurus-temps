@@ -8,6 +8,8 @@
 // de la page la réduit dans la barre des tâches, le temps qu'elle ne gêne plus.
 // « Sessions » (barre du haut) ouvre la fenêtre des sessions dans une deuxième fenêtre.
 // Les réglages (position, verrou…) sont gardés dans window.json, dans le dossier de l'app.
+// Sauvegardes : une copie vérifiée de toute la base par jour de travail, dans les dossiers
+// `backupDirs` de window.json (PC et Google Drive), au lancement puis toutes les heures.
 const { app, BrowserWindow, Tray, Menu, screen, shell, nativeImage, ipcMain, globalShortcut, session } = require('electron');
 const fs = require('fs');
 const path = require('path');
@@ -20,6 +22,8 @@ const LOGO = path.join(__dirname, '..', 'kilo_logo.png');
 const ICON = path.join(__dirname, 'icon.ico');
 const SHOW_FALLBACK_MS = 4000;
 const RETRY_LOAD_MS = 10000;
+const BACKUP_FIRST_MS = 60 * 1000;      // laisse le réseau et Google Drive arriver au démarrage
+const BACKUP_EVERY_MS = 60 * 60 * 1000;
 
 let win = null;
 let tray = null;
@@ -43,7 +47,14 @@ process.on('uncaughtException', (e) => log('erreur : ' + (e && e.stack || e)));
 function loadSettings() {
   let saved = {};
   try { saved = JSON.parse(fs.readFileSync(settingsPath(), 'utf8')); } catch (e) { /* premier lancement */ }
-  return Object.assign({ locked: false, onTop: true, autostart: true, height: 360 }, saved);
+  return Object.assign({
+    locked: false, onTop: true, autostart: true, height: 360,
+    // Sauvegardes : une copie par jour de travail dans chacun de ces dossiers (desktop/backup.mjs).
+    backupDirs: [
+      path.join(app.getPath('documents'), 'PROJECTS', 'KILOSAURUS', 'Sauvegardes'),
+      'G:\\Mon Drive\\KILOSAURUS\\Temps\\Sauvegardes',
+    ],
+  }, saved);
 }
 
 function saveSettings() {
@@ -156,6 +167,36 @@ function openSessionsWindow(url) {
 
 function loadSite() {
   win.loadURL(SITE + '?mini=1').catch(() => { /* signalé par did-fail-load */ });
+}
+
+// Sauvegarde : au lancement puis toutes les heures, jusqu'à ce que la copie du jour de travail soit
+// dans tous les dossiers. Le code est celui que la page a gardé (code PC). Tout est noté dans
+// desktop.log ; une panne se voit aussi dans l'app (bandeau), sur tous les appareils.
+let backupRunning = false;
+async function backupTick() {
+  if (backupRunning || !win) return;
+  backupRunning = true;
+  try {
+    const code = await win.webContents.executeJavaScript("localStorage.getItem('kt.code')");
+    if (!code) { log('sauvegarde : pas de code, se connecter dans la mini-fenêtre'); return; }
+    const { runBackup } = await import('./backup.mjs');
+    const call = async (action, params = {}) => {
+      const res = await fetch(SITE + 'api', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ code, action, ...params }),
+      });
+      const body = await res.json();
+      if (!body.ok) throw new Error(body.error.code + ' : ' + body.error.message);
+      return body.data;
+    };
+    const r = await runBackup({ call, dirs: settings.backupDirs, log: (line) => log('sauvegarde ' + line) });
+    log('sauvegarde ' + r.day + ' : ' + (r.status === 'done' ? 'complète' : 'incomplète, nouvel essai dans 1 h'));
+  } catch (e) {
+    log('sauvegarde ratée : ' + (e && e.message || e));
+  } finally {
+    backupRunning = false;
+  }
 }
 
 function applyOnTop() {
@@ -286,6 +327,8 @@ if (!app.requestSingleInstanceLock()) {
     createWindow();
     applyAutostart();
     createTray();
+    setTimeout(backupTick, BACKUP_FIRST_MS);
+    setInterval(backupTick, BACKUP_EVERY_MS);
     if (!globalShortcut.register(SHORTCUT, toggleVisible)) log('raccourci ' + SHORTCUT + ' déjà pris');
   });
 
