@@ -29,7 +29,10 @@ import java.io.InputStream;
  */
 public class MainActivity extends Activity {
     private static final String APP_HOST = "app.kilosaurus.local";
+    /** Posé par le bouton Tâches du widget : l'app s'ouvre sur le panneau des tâches. */
+    static final String EXTRA_OPEN_TASKS = "com.kilosaurus.temps.OPEN_TASKS";
     private WebView web;
+    private boolean openTasksPending = false;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -60,8 +63,25 @@ public class MainActivity extends Activity {
         root.addView(web, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         padForSystemBars(root);
         setContentView(root);
-        if (state == null) web.loadUrl("https://" + APP_HOST + "/index.html");
-        else web.restoreState(state);
+        boolean tasks = wantsTasks(getIntent());
+        if (state == null) {
+            web.loadUrl("https://" + APP_HOST + "/index.html" + (tasks ? "?ouvrir=taches" : ""));
+        } else {
+            web.restoreState(state);
+            openTasksPending = tasks;
+        }
+    }
+
+    // App déjà ouverte : le widget la ramène devant (SINGLE_TOP) avec la demande d'ouvrir les tâches.
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (wantsTasks(intent)) openTasksPending = true;
+    }
+
+    private static boolean wantsTasks(Intent intent) {
+        return intent != null && intent.getBooleanExtra(EXTRA_OPEN_TASKS, false);
     }
 
     @Override
@@ -77,6 +97,10 @@ public class MainActivity extends Activity {
         sendBroadcast(new Intent(this, WidgetProvider.class).setAction(WidgetProvider.ACTION_REFRESH));
         // L'état a pu changer via le widget : la page se recharge depuis le serveur.
         web.evaluateJavascript("window.dispatchEvent(new Event('online'))", null);
+        if (openTasksPending) {
+            openTasksPending = false;
+            web.evaluateJavascript("window.ktOpenTasks && window.ktOpenTasks()", null);
+        }
     }
 
     private static String mime(String path) {

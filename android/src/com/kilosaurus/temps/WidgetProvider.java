@@ -25,8 +25,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Widget lecture / stop. Le téléphone sert à écrire : ▶ relance en type Writing le dernier projet
  * travaillé (celui du dernier compteur, lancé n'importe où : pour en changer, on lance l'autre projet
  * une fois dans l'app), ■ arrête le compteur en cours, d'où qu'il vienne. En pause (lancée depuis l'app), le gros bouton
- * devient ▶ et reprend la tâche d'avant la pause ; un petit ■ à côté arrête le compteur. Tout appui
- * hors des boutons ouvre l'app (connexion, compteur oublié, envoi en attente : tout se règle là).
+ * devient ▶ et reprend la tâche d'avant la pause ; un petit ■ à côté arrête le compteur. Le bouton
+ * Tâches ouvre l'app sur le panneau des tâches. Tout appui hors des boutons ouvre l'app (connexion,
+ * compteur oublié, envoi en attente : tout se règle là).
  *
  * Zéro attente : un tap change l'état affiché (Prefs) et met l'action en file, sans réseau. Un seul
  * envoyeur vide la file derrière, dans l'ordre, chaque action avec l'heure de son tap (tapTime, à
@@ -48,6 +49,7 @@ public class WidgetProvider extends AppWidgetProvider {
     private static final int RETRY_REQUEST = 0x7fff0000;
     private static final int MIDNIGHT_REQUEST = 0x7fff0001;
     private static final int OPEN_APP_REQUEST = 0x7ffe0000;
+    private static final int OPEN_TASKS_REQUEST = 0x7ffd0000;
 
     // LOCK protège la file (lecture-modification-écriture) ; SENDING garantit un seul envoyeur.
     private static final Object LOCK = new Object();
@@ -313,6 +315,14 @@ public class WidgetProvider extends AppWidgetProvider {
         v.setOnClickPendingIntent(R.id.root, openApp);
         v.setOnClickPendingIntent(R.id.title, openApp);
         v.setOnClickPendingIntent(R.id.message, openApp);
+        // Tâches : l'app s'ouvre directement sur le panneau des tâches (écrire la liste du jour).
+        // SINGLE_TOP + CLEAR_TOP : une app déjà ouverte reçoit la demande (onNewIntent).
+        PendingIntent openTasks = PendingIntent.getActivity(ctx, OPEN_TASKS_REQUEST + widgetId,
+            new Intent(ctx, MainActivity.class)
+                .putExtra(MainActivity.EXTRA_OPEN_TASKS, true)
+                .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        v.setOnClickPendingIntent(R.id.tasks, openTasks);
         v.setOnClickPendingIntent(R.id.button, broadcast(ctx, ACTION_TOGGLE, widgetId));
         v.setOnClickPendingIntent(R.id.stop_small, broadcast(ctx, ACTION_STOP, widgetId));
 

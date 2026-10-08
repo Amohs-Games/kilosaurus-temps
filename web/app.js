@@ -28,6 +28,8 @@
   var VUE_SESSIONS = /[?&]vue=sessions(&|$)/.test(location.search);
   // Idem pour le panneau des tâches (?vue=taches).
   var VUE_TACHES = /[?&]vue=taches(&|$)/.test(location.search);
+  // App normale ouverte directement sur le panneau des tâches (bouton Tâches du widget Android).
+  var OPEN_TASKS = /[?&]ouvrir=taches(&|$)/.test(location.search);
   if (VUE_SESSIONS) document.title = 'Sessions — Kilosaurus Temps';
   if (VUE_TACHES) document.title = 'Tâches — Kilosaurus Temps';
 
@@ -1263,4 +1265,7 @@
   if (CONFIGURED) refresh();
   if (CONFIGURED && VUE_SESSIONS && state.code) openSessions();
   if (CONFIGURED && VUE_TACHES && state.code) openTasksPanel();
+  if (CONFIGURED && OPEN_TASKS && state.code) openTasksPanel();
+  // L'app Android déjà ouverte : le bouton Tâches du widget l'appelle (MainActivity.onResume).
+  window.ktOpenTasks = function () { if (CONFIGURED && state.code) openTasksPanel(); };
 })();

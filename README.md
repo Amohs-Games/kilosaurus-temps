@@ -235,7 +235,8 @@ un build d'essai y est copié aussi.
 ### Poser le widget
 
 1. Appui long sur l'écran d'accueil → **Widgets** → **Kilosaurus Temps** → **Lecture / stop**
-   (3 × 1 case, redimensionnable).
+   (4 × 1 cases, redimensionnable). Un widget posé avant la v2.5 garde sa taille : élargissez-le
+   d'une case (appui long → poignées) pour faire de la place au bouton **Tâches**.
 2. Rien à régler : le widget prend le code de l'app (connectez-vous d'abord dans l'app) et son
    projet est le dernier travaillé.
 
@@ -244,8 +245,9 @@ Utilisation :
 - **▶** relance en type **Writing** le dernier projet travaillé : celui du compteur en cours ou, à
   l'arrêt, du dernier compteur, d'où qu'il ait été lancé (app, PC, agent). Pour changer de projet,
   lancez l'autre une fois dans l'app. **■** arrête le compteur en cours, quel que soit son projet ou
-  son type. Ce ▶, comme « reprendre » après une pause, met aussi à jour le choix partagé ; le
-  widget est sinon inchangé (il ne montre pas les tâches).
+  son type. Ce ▶, comme « reprendre » après une pause, met aussi à jour le choix partagé.
+- **Tâches** ouvre l'app directement sur le panneau des tâches, pour écrire la liste du jour (le
+  widget ne montre pas les tâches lui-même).
 - **En pause** (lancée depuis l'app) : le widget affiche « ⏸ En pause » et la durée de la pause. Le
   gros bouton devient **▶** et reprend sur le projet d'avant la pause ; un petit **■** à côté
   arrête le compteur.

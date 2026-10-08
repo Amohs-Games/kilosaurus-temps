@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Compact, une rangée : à gauche le projet, la session et le total du jour ; à droite ▶ / ■ (en pause : ▶ pour reprendre, petit ■ pour arrêter).
+<!-- Compact, une rangée : à gauche le projet, la session et le total du jour ; à droite Tâches (ouvre
+     le panneau des tâches), puis ▶ / ■ (en pause : ▶ pour reprendre, petit ■ pour arrêter).
      Marges égales autour du contenu ; arrondi du bouton = arrondi du fond moins la marge, pour
      des coins concentriques. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -76,6 +77,20 @@
             android:ellipsize="end"
             android:visibility="gone" />
     </LinearLayout>
+
+    <!-- Ouvre l'app sur le panneau des tâches. -->
+    <Button
+        android:id="@+id/tasks"
+        android:layout_width="72dp"
+        android:layout_height="match_parent"
+        android:layout_marginStart="12dp"
+        android:padding="0dp"
+        android:background="@drawable/btn_tasks"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:textAllCaps="false"
+        android:text="Tâches" />
 
     <!-- En pause seulement : arrête le compteur (le gros bouton, lui, reprend). -->
     <Button
