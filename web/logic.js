@@ -333,10 +333,10 @@
   function backupWarnings(backup, nowMs) {
     if (!backup) return [];
     var out = [];
-    if (!backup.desktopAt) out.push('Aucune sauvegarde sur le PC pour l\'instant.');
+    if (!backup.desktopAt) out.push('Aucune sauvegarde complète (PC et Drive) pour l’instant.');
     else {
       var age = nowMs - Date.parse(backup.desktopAt);
-      if (age > BACKUP_LATE_MS) out.push('Pas de sauvegarde sur le PC depuis ' + Math.floor(age / 86400000) + ' jours.');
+      if (age > BACKUP_LATE_MS) out.push('Pas de sauvegarde complète (PC et Drive) depuis ' + Math.floor(age / 86400000) + ' jours.');
     }
     if (backup.unfrozenSince) {
       var p = backup.unfrozenSince.split('-');

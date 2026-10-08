@@ -256,9 +256,9 @@ test('alertes de sauvegarde', () => {
   const now = Date.parse('2026-10-08T12:00:00+02:00');
   assert.deepEqual(L.backupWarnings(undefined, now), []);
   assert.deepEqual(L.backupWarnings({ desktopAt: '2026-10-07T07:00:00.000Z', unfrozenSince: null }, now), []);
-  assert.deepEqual(L.backupWarnings({ desktopAt: null, unfrozenSince: null }, now), ['Aucune sauvegarde sur le PC pour l\'instant.']);
+  assert.deepEqual(L.backupWarnings({ desktopAt: null, unfrozenSince: null }, now), ['Aucune sauvegarde complète (PC et Drive) pour l’instant.']);
   assert.deepEqual(L.backupWarnings({ desktopAt: '2026-10-05T07:00:00.000Z', unfrozenSince: '2026-10-03' }, now), [
-    'Pas de sauvegarde sur le PC depuis 3 jours.',
+    'Pas de sauvegarde complète (PC et Drive) depuis 3 jours.',
     'Journées non figées depuis le 03/10.',
   ]);
 });
