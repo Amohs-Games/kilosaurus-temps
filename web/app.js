@@ -369,15 +369,15 @@
     if (!r) {
       return '<section class="hero idle">' +
         '<div class="hero-project">Rien en cours</div>' +
-        '<div class="hero-time">0:00:00</div>' +
+        '<div class="hero-time">' + workedText(s) + '</div>' +
         grid(s) +
         '</section>';
     }
     var paused = L.isPause(r);
     var t = L.typeOf(r);
     var c = L.typeColor(s, t);
-    // Le grand compteur compte la séance depuis son lancement (pauses et changements de tâche
-    // compris) ; dessous, le cumul des pauses de la séance. Pause (ou Reprendre) au-dessus de STOP.
+    // Le grand compteur compte le travail du jour, pauses exclues ; dessous, la séance depuis son
+    // lancement et le cumul de ses pauses. Pause (ou Reprendre) au-dessus de STOP.
     var stop = '<button class="stop" data-act="stop">' + ICON.stop + 'STOP</button>';
     var actions = (paused
       ? '<button class="resume" data-act="resume">' + ICON.play + 'REPRENDRE</button>'
@@ -385,7 +385,8 @@
     var session = L.sessionOf(s.today, r, Date.now());
     return '<section class="hero' + (paused ? ' paused' : '') + '">' +
       '<div class="hero-project">' + esc(r.project) + ' · <span class="pill" style="background:' + c + ';color:' + L.textOn(c) + '">' + esc(t) + '</span></div>' +
-      '<div class="hero-time" id="elapsed">' + L.elapsed(Date.now() - session.start) + '</div>' +
+      '<div class="hero-time" id="elapsed">' + workedText(s) + '</div>' +
+      '<div class="hero-pause" id="session-time">' + sessionTimeText(session) + '</div>' +
       '<div class="hero-pause" id="session-pause">' + sessionPauseText(session) + '</div>' +
       '<div class="hero-actions">' + actions + '</div>' +
       grid(s) +
@@ -402,6 +403,14 @@
       family = t.family;
       return '<button class="type' + (t.name === cur ? ' on' : '') + (rowStart ? ' row-start' : '') + '" style="--c:' + t.color + ';--on:' + L.textOn(t.color) + '" data-act="type" data-t="' + esc(t.name) + '">' + esc(t.name) + '</button>';
     }).join('') + '</div>';
+  }
+
+  function workedText(s) {
+    return L.elapsed(L.todayWorked(s.today, Date.now()) * 3600000);
+  }
+
+  function sessionTimeText(session) {
+    return 'Session ' + L.elapsed(Date.now() - session.start);
   }
 
   function sessionPauseText(session) {
@@ -471,7 +480,9 @@
     var r = state.status && state.status.running;
     if (el && r) {
       var session = L.sessionOf(state.status.today, r, Date.now());
-      el.textContent = L.elapsed(Date.now() - session.start);
+      el.textContent = workedText(state.status);
+      var st = document.getElementById('session-time');
+      if (st) st.textContent = sessionTimeText(session);
       var sp = document.getElementById('session-pause');
       if (sp) sp.textContent = sessionPauseText(session);
     }

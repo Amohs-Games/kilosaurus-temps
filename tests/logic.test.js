@@ -181,6 +181,20 @@ test('couleur des boutons de projet : Fluffy en bleu, les autres en vert', () =>
   assert.equal(L.projectColor('Heirfall'), L.projectColor('Proto'));
 });
 
+test('travaillé aujourd’hui : total du jour moins les pauses', () => {
+  const now = at('2026-10-01T12:00:00+02:00');
+  const rows = [
+    sess('y', 'Dev', '2026-09-30T23:00:00+02:00', '2026-10-01T01:00:00+02:00'), // 1 h après minuit
+    sess('a', 'Dev', '2026-10-01T09:00:00+02:00', '2026-10-01T10:00:00+02:00'), // 1 h
+    sess('p', 'Pause', '2026-10-01T10:00:00+02:00', '2026-10-01T10:30:00+02:00'), // 0,5 h de pause
+    { id: 'b', project: 'Fluffy', type: 'Misc', date: '2026-10-01', start: null, end: null, hours: 1 }, // bloc
+    sess('c', 'Dev', '2026-10-01T10:30:00+02:00', null), // en cours : 1,5 h
+  ];
+  assert.equal(L.todayTotal(rows, now), 5);
+  assert.equal(L.todayWorked(rows, now), 4.5);
+  assert.equal(L.todayWorked([], now), 0);
+});
+
 test('familles de tâches : Orga (Misc en premier), puis Art, Code, Contenu', () => {
   const fam = L.typesOf(base()).map((t) => t.family);
   assert.deepEqual(fam, ['orga', 'orga', 'orga', 'orga', 'art', 'art', 'art', 'art', 'code', 'code', 'code', 'code', 'contenu', 'contenu', 'pause']);

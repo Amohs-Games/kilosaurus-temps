@@ -246,6 +246,11 @@
     return todayTotal((rows || []).filter(isPause), nowMs);
   }
 
+  // Temps travaillé aujourd’hui : le total du jour sans les pauses.
+  function todayWorked(rows, nowMs) {
+    return Math.max(0, todayTotal(rows, nowMs) - todayPause(rows, nowMs));
+  }
+
   var SAME_INSTANT_MS = 1000;
 
   /**
@@ -350,7 +355,7 @@
     elapsed: elapsed, duration: duration, clock: clock, dayLabel: dayLabel,
     entryEdit: entryEdit, isLong: isLong, forgotMax: forgotMax, visibleProjects: visibleProjects, pickableProjects: pickableProjects,
     isForgotten: isForgotten, applyLocal: applyLocal,
-    typesOf: typesOf, typeOf: typeOf, typeColor: typeColor, textOn: textOn, projectColor: projectColor, isPause: isPause, todayPause: todayPause, sessionOf: sessionOf, PAUSE_TYPE: PAUSE_TYPE, rowHours: rowHours, todayTotal: todayTotal,
+    typesOf: typesOf, typeOf: typeOf, typeColor: typeColor, textOn: textOn, projectColor: projectColor, isPause: isPause, todayPause: todayPause, sessionOf: sessionOf, PAUSE_TYPE: PAUSE_TYPE, rowHours: rowHours, todayTotal: todayTotal, todayWorked: todayWorked,
     dayTimeline: dayTimeline, weekRange: weekRange, monthRange: monthRange, aggregate: aggregate, recapMatches: recapMatches, backupWarnings: backupWarnings,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
