@@ -175,6 +175,11 @@
   var MAX_SESSION_MS = 24 * HOUR;
   var MAX_DESCRIPTION = 200;
 
+  // Une activité absente, null ou vide veut dire « pas donnée » (repli), comme sur le serveur.
+  function typeOrFallback(value, fallback) {
+    return value === undefined || value === null || value === '' ? fallback : canonicalType(value);
+  }
+
   function isPauseType(type) { return canonicalType(type) === PAUSE_NAME; }
 
   // Jour de travail : de 6 h à 6 h le lendemain, à l’heure locale de l’appareil. Avant 6 h du matin,
@@ -198,8 +203,10 @@
       .map(function (x) { return x.t; });
   }
   // Faites (ordre des coches).
-  function doneTasks(s) {
-    return ((s && s.tasks) || []).filter(function (t) { return !!t.done; })
+  // Avec `nowMs` : seulement celles cochées depuis le début du jour de travail en cours (6 h).
+  function doneTasks(s, nowMs) {
+    var since = nowMs == null ? 0 : workDayStart(workDayKey(nowMs));
+    return ((s && s.tasks) || []).filter(function (t) { return !!t.done && new Date(t.done).getTime() >= since; })
       .sort(function (a, b) { return new Date(a.done).getTime() - new Date(b.done).getTime(); });
   }
   // La tâche du haut : la première à faire.
@@ -268,7 +275,7 @@
 
     if (action === 'select') {
       var project = p.project === undefined ? cur.project : p.project;
-      var type = p.type === undefined || p.type === null ? cur.type : canonicalType(p.type);
+      var type = typeOrFallback(p.type, cur.type);
       if ((s.projects || []).indexOf(project) < 0 || isPauseType(type)) return false;
       s.choice = { project: project, type: type };
       switchRunning(s, project, type, atMs);
@@ -280,7 +287,7 @@
       var description = typeof p.description === 'string' ? p.description.trim() : '';
       if (!p.id || !description || description.length > MAX_DESCRIPTION || findTask(s, p.id)) return false;
       var taskProject = p.project === undefined || p.project === null ? cur.project : p.project;
-      var taskType = p.type === undefined || p.type === null ? cur.type : canonicalType(p.type);
+      var taskType = typeOrFallback(p.type, cur.type);
       if ((s.projects || []).indexOf(taskProject) < 0 || isPauseType(taskType)) return false;
       var todo = todoTasks(s);
       var position = todo.length ? todo.reduce(function (m, t) { return Math.max(m, t.position); }, 0) + 1 : 1;
@@ -298,7 +305,7 @@
         next.project = p.project;
       }
       if (p.type !== undefined) {
-        next.type = canonicalType(p.type);
+        next.type = typeOrFallback(p.type, next.type);
         if (isPauseType(next.type)) return false;
       }
       if (next.description === task.description && next.project === task.project && next.type === task.type) return false;

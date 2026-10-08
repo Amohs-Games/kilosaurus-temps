@@ -504,3 +504,25 @@ test('les actions de tâche ne modifient pas l’état d’origine', () => {
   act(s0, 'checkTask', { id: 'A' }, T1);
   assert.equal(JSON.stringify(s0), snap);
 });
+test('une activité null ou vide veut dire absente (repli), comme sur le serveur', () => {
+  let s = act(withTasks(), 'addTask', { id: 'A', description: 'A', project: 'Jam', type: 'Dev' });
+  s = act(s, 'editTask', { id: 'A', description: 'A bis', type: null });
+  assert.equal(s.tasks[0].type, 'Dev');
+  s = act(s, 'editTask', { id: 'A', description: 'A ter', type: '' });
+  assert.equal(s.tasks[0].type, 'Dev');
+  const c = Object.assign(withTasks(), { choice: { project: 'Jam', type: 'Sound' } });
+  assert.equal(act(c, 'addTask', { id: 'B', description: 'B', type: '' }).tasks[0].type, 'Sound');
+  assert.equal(act(c, 'select', { project: 'Fluffy', type: '' }).choice.type, 'Sound');
+});
+
+test('doneTasks avec nowMs : seulement les tâches faites depuis le dernier 6 h', () => {
+  const s = Object.assign(withTasks(), { tasks: [
+    { id: 'Y', description: 'Y', project: 'Fluffy', type: 'Misc', position: 1, done: '2026-10-07T20:00:00+02:00', started: null },
+    { id: 'T', description: 'T', project: 'Fluffy', type: 'Misc', position: 2, done: '2026-10-08T07:00:00+02:00', started: null },
+  ] });
+  const now = Date.parse('2026-10-08T09:00:00+02:00');
+  assert.deepEqual(L.doneTasks(s, now).map((t) => t.id), ['T']);
+  assert.deepEqual(L.doneTasks(s).map((t) => t.id), ['Y', 'T']);
+  // à 5 h du matin, le jour de travail est encore celui de la veille
+  assert.deepEqual(L.doneTasks(s, Date.parse('2026-10-08T05:00:00+02:00')).map((t) => t.id), ['Y', 'T']);
+});
