@@ -428,3 +428,11 @@ test('oubli : une heure de fin à plus de 24 h du début est refusée avec un me
   clock.set('2026-10-03T09:00:00+02:00');
   fails(await call('stop', { endAt: '2026-10-02T10:00:00+02:00' }), 'invalid', /au plus 24 h après le début/);
 });
+
+test('caractères de contrôle : refusés dans les notes et les noms de projet, \n et \t permis dans les notes', async () => {
+  const { call } = await makeEnv();
+  fails(await call('logBlock', { id: 'c1', project: 'Fluffy', hours: 2, note: 'a\u0000b' }), 'invalid', /caractère de contrôle/);
+  ok(await call('logBlock', { id: 'c2', project: 'Fluffy', hours: 2, note: 'ligne 1\n\tligne 2\r\n' }));
+  fails(await call('addProject', { name: 'Pro\u0000jet' }), 'invalid', /contrôle/);
+  fails(await call('editEntry', { id: 'c2', note: 'x\u0001y' }), 'invalid', /caractère de contrôle/);
+});

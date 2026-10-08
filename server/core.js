@@ -15,6 +15,10 @@ const OFFSETS = [0, 15, 30, 60];
 export const MAX_SESSION_MS = 24 * 3600000;
 const MAX_HISTORY_DAYS = 62;
 const FORBIDDEN_NAME = /[\[\]*?\/\\:]/;
+// Un NUL fausse LENGTH() de SQLite (empreinte des sauvegardes) : pas de caractère de contrôle,
+// sauf tabulation et retours à la ligne dans les notes.
+const CONTROL_IN_NOTE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
+const CONTROL_IN_NAME = /[\u0000-\u001F\u007F]/;
 const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
 const TOO_LONG = 'Une session ne peut pas dépasser 24 h : indique d’abord l’heure de fin du compteur en cours.';
 const WRITE_ACTIONS = ['start', 'stop', 'note', 'logBlock', 'logSession', 'addProject', 'deleteEntry', 'editEntry', 'undo'];
@@ -174,6 +178,7 @@ export function cleanNote(text) {
   if (text === undefined || text === null) return '';
   if (typeof text !== 'string') fail('La note doit être du texte.');
   if (text.length > 500) fail('Note trop longue (500 caractères max).');
+  if (CONTROL_IN_NOTE.test(text)) fail('La note contient un caractère de contrôle interdit.');
   return text.trim();
 }
 export function requireBlockHours(value) {
@@ -408,6 +413,7 @@ export const actions = {
     if (name.length > 30) fail('Nom de projet trop long (30 caractères max).');
     if (name.charAt(0) === '_') fail('Un nom de projet ne commence pas par « _ ».');
     if (FORBIDDEN_NAME.test(name)) fail('Caractères interdits : [ ] * ? / \\ :');
+    if (CONTROL_IN_NAME.test(name)) fail('Caractères de contrôle interdits dans un nom de projet.');
     const taken = (await projectNames(ctx.db)).some((n) => n.toLowerCase() === name.toLowerCase());
     if (taken) fail('Ce nom est déjà pris : ' + name);
     const { position } = await ctx.db.first('SELECT COALESCE(MAX(position), 0) + 1 AS position FROM projects');
