@@ -55,7 +55,7 @@ Une table d'archive par table de données, même colonnes, plus le jour figé :
 
 - `archive_entries` — `archived_day` (aaaa-mm-jj) + toutes les colonnes d'`entries`. Clé :
   (`archived_day`, `id`).
-- `archive_days` — une ligne par jour figé : `day`, `archived_ms`, `rows` (nombre de lignes
+- `archive_days` — une ligne par jour figé : `day`, `archived_ms`, `row_count` (nombre de lignes
   copiées), `hours` (total d'heures du jour, sessions et blocs, au moment de figer).
 
 Les tâches (conception à venir) auront leur `archive_tasks` sur le même modèle.
@@ -75,8 +75,11 @@ bureau, elle, est hors de portée.
 - Une seule écriture groupée (`batch`) par jour : les lignes et la ligne `archive_days` entrent
   ensemble ou pas du tout. Rejouer ne double rien : un jour déjà présent dans `archive_days` est
   sauté, et la clé de `archive_entries` refuserait de toute façon une deuxième copie.
-- Premier passage : tous les jours passés de l'historique sont figés d'un coup, un `batch` par
-  jour.
+- Au plus **20 jours par appel** : sur l'offre gratuite, un appel du Worker a droit à 50 requêtes
+  D1, et chaque instruction d'un `batch` compte. Le premier passage rattrape l'historique en
+  quelques heures (le bandeau d'alerte peut s'afficher pendant ce rattrapage).
+- La base retient le dernier jour traité (`settings.archive_through`) : l'alerte et le cron ne
+  relisent que ce qui vient après, sans parcourir tout l'historique.
 
 ### Lire une version d'origine
 
@@ -90,11 +93,12 @@ l'agent ou pour une restauration à la main.
 1. **Au lancement, puis toutes les heures**, si la copie du jour de travail (6 h → 6 h) n'existe
    pas encore dans les deux dossiers : elle la fait.
 2. Elle utilise le code d'accès qu'elle a déjà (code `PC`).
-3. Elle demande l'export **table par table, par pages de 500 lignes** (action `export`) : chaque
+3. Elle demande l'export **table par table, par pages de 200 lignes** (action `export`) : chaque
    appel reste petit, quelle que soit la taille de l'historique.
 4. Elle demande au serveur l'**empreinte** de la base (action `exportCheck`) : pour chaque table,
-   le nombre de lignes et des sommes calculées par la base elle-même (somme des `touched_ms`,
-   des `start_ms`, des `end_ms`, longueur totale des notes…). Elle recalcule les mêmes valeurs sur
+   le nombre de lignes et, pour chaque colonne, des sommes calculées par la base elle-même
+   (nombre de vides, somme des nombres, longueur totale des textes). Les sommes restent entières
+   et petites, pour que le calcul en JavaScript retombe exactement sur celui de SQLite. Elle recalcule les mêmes valeurs sur
    ce qu'elle a reçu. Si une seule diffère (une écriture est tombée pendant l'export, une page a
    manqué), elle jette tout et recommence au tour suivant.
 5. Elle écrit le fichier **à côté** (`….tmp`), le relit, vérifie qu'il redonne la même
@@ -102,7 +106,7 @@ l'agent ou pour une restauration à la main.
    rien n'est écrit.
 6. Même chose dans le second dossier.
 7. Quand les deux dossiers ont leur copie, elle le signale au serveur (action `backupDone`, avec
-   le jour et l'empreinte).
+   le jour).
 
 ### Le fichier
 
@@ -147,7 +151,7 @@ l'agent ou pour une restauration à la main.
 |---|---|---|
 | `export { table, after, limit }` | non | une page de lignes d'une table, triée par clé |
 | `exportCheck` | non | l'empreinte de chaque table, calculée en SQL |
-| `backupDone { day, check }` | réglage | note la dernière copie de bureau complète |
+| `backupDone { day }` | réglage | note la dernière copie de bureau complète |
 | `archivedDay { day }` | non | les lignes figées d'un jour |
 
 Le Worker gagne un point d'entrée `scheduled` (le cron) qui appelle la fonction qui fige les
