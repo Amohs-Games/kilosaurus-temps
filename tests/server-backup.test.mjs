@@ -94,3 +94,67 @@ test('figer : 20 jours au plus par appel, sous 50 requêtes, le reste au suivant
   assert.equal(second.through, '2026-09-30');
   assert.equal(count(sqlite, 'SELECT COUNT(*) n FROM archive_days'), 25);
 });
+
+test('export : pages sans trou ni doublon, tables et tailles contrôlées', async () => {
+  const { call, sqlite } = await makeEnv();
+  for (let i = 1; i <= 5; i++) ok(await call('logBlock', { id: 'b' + i, project: 'Fluffy', hours: 2 }));
+  const ids = [];
+  let after = 0;
+  let pages = 0;
+  for (;;) {
+    const page = ok(await call('export', { table: 'entries', after, limit: 2 }));
+    pages++;
+    ids.push(...page.rows.map((r) => r.id));
+    assert.equal(page.rows[0] && page.rows[0]._rowid, undefined);
+    if (page.next === null) break;
+    after = page.next;
+  }
+  assert.deepEqual(ids, ['b1', 'b2', 'b3', 'b4', 'b5']);
+  assert.equal(pages, 3);
+  const check = ok(await call('exportCheck')).tables;
+  assert.deepEqual(check.entries, fingerprintRows(TABLES.find((t) => t.name === 'entries'), sqlite.prepare('SELECT * FROM entries').all()));
+  fails(await call('export', { table: 'lockouts' }), 'invalid');
+  fails(await call('export', { table: 'nope' }), 'invalid');
+  fails(await call('export', { table: 'entries', limit: 201 }), 'invalid');
+  fails(await call('export', { table: 'entries', after: -1 }), 'invalid');
+});
+
+test('backupDone : noté hors journal, visible dans status', async () => {
+  const { call, sqlite, clock } = await makeEnv();
+  ok(await call('logBlock', { id: 'b1', project: 'Fluffy', hours: 2 }));
+  const before = ok(await call('status'));
+  assert.deepEqual(before.backup, { desktopDay: null, desktopAt: null, unfrozenSince: null });
+  const s = ok(await call('backupDone', { day: '2026-10-01' }));
+  assert.equal(s.backup.desktopDay, '2026-10-01');
+  assert.equal(s.backup.desktopAt, new Date(clock.now()).toISOString());
+  assert.deepEqual(s.undo, before.undo); // pas une action annulable
+  assert.equal(count(sqlite, 'SELECT COUNT(*) n FROM ops'), 1);
+  fails(await call('backupDone', { day: '01/10/2026' }), 'invalid');
+});
+
+test('status : jour fini depuis plus de 2 h et pas figé → signalé, puis plus après le cron', async () => {
+  const { call, env, clock } = await makeEnv();
+  ok(await call('logBlock', { id: 'b1', project: 'Fluffy', hours: 2 }));
+  clock.set('2026-10-02T07:59:00+02:00');
+  assert.equal(ok(await call('status')).backup.unfrozenSince, null);
+  clock.set('2026-10-02T08:00:00+02:00');
+  assert.equal(ok(await call('status')).backup.unfrozenSince, '2026-10-01');
+  await freezeDays({ db: env.db, now: clock.now() });
+  assert.equal(ok(await call('status')).backup.unfrozenSince, null);
+});
+
+test('archivedDay : les lignes figées, supprimées signalées', async () => {
+  const { call, env, clock } = await makeEnv();
+  ok(await call('logBlock', { id: 'b1', project: 'Fluffy', hours: 4 }));
+  ok(await call('logBlock', { id: 'b2', project: 'Fluffy', hours: 2 }));
+  ok(await call('deleteEntry', { id: 'b2' }));
+  clock.set('2026-10-02T07:00:00+02:00');
+  await freezeDays({ db: env.db, now: clock.now() });
+  const a = ok(await call('archivedDay', { day: '2026-10-01' }));
+  assert.equal(a.archivedAt, new Date(clock.now()).toISOString());
+  assert.deepEqual(a.rows.map((r) => [r.id, r.hours, r.deleted]), [['b1', 4, false], ['b2', 2, true]]);
+  const none = ok(await call('archivedDay', { day: '2026-09-01' }));
+  assert.equal(none.archivedAt, null);
+  assert.deepEqual(none.rows, []);
+  fails(await call('archivedDay', { day: 'hier' }), 'invalid');
+});

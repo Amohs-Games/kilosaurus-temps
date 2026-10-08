@@ -117,12 +117,26 @@ export function toApi(r) {
   return { id: r.id, project: r.project, type: typeOf(r), date: r.day, start: iso(r.start_ms), end: iso(r.end_ms), hours, note: r.note || '', source: r.source };
 }
 
+// État des sauvegardes, pour le bandeau d'alerte : dernière copie de bureau complète, et premier
+// jour fini depuis plus de 2 h pas encore figé. Une seule ligne lue (index sur day).
+async function backupState(db, cfg, nowMs) {
+  const next = await db.first('SELECT day FROM entries WHERE day > ? ORDER BY day LIMIT 1', [cfg.archive_through || NEVER]);
+  let desktop = null;
+  try { desktop = cfg.backup_desktop ? JSON.parse(cfg.backup_desktop) : null; } catch (e) { desktop = null; }
+  return {
+    desktopDay: desktop ? desktop.day : null,
+    desktopAt: desktop ? iso(desktop.at_ms) : null,
+    unfrozenSince: next && workDayEnd(next.day) + FREEZE_GRACE_MS <= nowMs ? next.day : null,
+  };
+}
+
 async function status(ctx) {
   const { db } = ctx;
   const run = await running(db);
   const [cfg, projects, lastRow, todayRows, undo] = await Promise.all([
     settings(db), projectNames(db), last(db), today(db, ctx.now, run), undoTarget(db),
   ]);
+  const backup = await backupState(db, cfg, ctx.now);
   return {
     me: cfg.me || '',
     agent: ctx.agent,
@@ -135,6 +149,7 @@ async function status(ctx) {
     types: TYPES,
     today: todayRows.map(toApi),
     undo: undo ? { opId: undo.id, summary: undo.summary } : null,
+    backup,
     serverTime: iso(ctx.now),
     now: iso(ctx.now),
   };
@@ -476,6 +491,52 @@ export const actions = {
       [p.from, p.to],
     );
     return { from: p.from, to: p.to, rows: rows.map(toApi) };
+  },
+
+  // ---- Sauvegardes ----
+
+  // Une page d'une table, dans l'ordre de stockage (rowid) : la mini-fenêtre enchaîne les pages
+  // jusqu'à `next: null`. Des pages courtes : un appel de Worker n'a que 10 ms de calcul.
+  async export(ctx, p) {
+    const table = TABLES.find((t) => t.name === p.table);
+    if (!table) fail('Table inconnue : ' + p.table);
+    const after = p.after === undefined || p.after === null ? 0 : Number(p.after);
+    if (!Number.isInteger(after) || after < 0) fail('Curseur de page non valide.');
+    const limit = p.limit === undefined || p.limit === null ? EXPORT_PAGE : Number(p.limit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > EXPORT_PAGE) fail(`Taille de page : 1 à ${EXPORT_PAGE}.`);
+    const cols = Object.keys(table.columns).join(', ');
+    const rows = await ctx.db.all(`SELECT rowid AS _rowid, ${cols} FROM ${table.name} WHERE rowid > ? ORDER BY rowid LIMIT ?`, [after, limit]);
+    return {
+      table: table.name,
+      rows: rows.map(({ _rowid, ...row }) => row),
+      next: rows.length === limit ? rows[rows.length - 1]._rowid : null,
+    };
+  },
+
+  // L'empreinte de chaque table, calculée par la base (server/backup.js).
+  async exportCheck(ctx) {
+    const tables = {};
+    for (const t of TABLES) tables[t.name] = { ...(await ctx.db.first(fingerprintSql(t))) };
+    return { tables };
+  },
+
+  // La mini-fenêtre a rangé la copie du jour dans tous ses dossiers. Un réglage, hors du journal :
+  // ce n'est pas une action que l'agent devrait pouvoir annuler.
+  async backupDone(ctx, p) {
+    if (typeof p.day !== 'string' || !DAY_KEY.test(p.day)) fail('Jour attendu au format aaaa-mm-jj.');
+    await ctx.db.batch([settingWrite('backup_desktop', JSON.stringify({ day: p.day, at_ms: ctx.now }))]);
+  },
+
+  // Les lignes d'un jour figé, telles qu'elles étaient à 6 h le lendemain.
+  async archivedDay(ctx, p) {
+    if (typeof p.day !== 'string' || !DAY_KEY.test(p.day)) fail('Jour attendu au format aaaa-mm-jj.');
+    const info = await ctx.db.first('SELECT archived_ms FROM archive_days WHERE day = ?', [p.day]);
+    const rows = await ctx.db.all('SELECT * FROM archive_entries WHERE archived_day = ? ORDER BY start_ms IS NULL, start_ms, created_ms', [p.day]);
+    return {
+      day: p.day,
+      archivedAt: info ? iso(info.archived_ms) : null,
+      rows: rows.map((r) => ({ ...toApi(r), deleted: r.deleted_ms != null })),
+    };
   },
 };
 
