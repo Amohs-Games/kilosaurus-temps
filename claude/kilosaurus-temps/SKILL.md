@@ -1,6 +1,6 @@
 ---
 name: kilosaurus-temps
-description: Loguer du temps de travail dans Kilosaurus Temps (la feuille de temps de l'utilisateur) pour l'utilisateur. À utiliser quand l'utilisateur demande de loguer, déclarer, compter ou noter du temps passé sur un projet, de lancer ou d'arrêter son compteur, de corriger, supprimer ou annuler un log.
+description: Loguer du temps de travail dans Kilosaurus Temps (la feuille de temps de l'utilisateur) pour l'utilisateur, et gérer sa liste de tâches. À utiliser quand l'utilisateur demande de loguer, déclarer, compter ou noter du temps passé sur un projet, de lancer ou d'arrêter son compteur, de corriger, supprimer ou annuler un log, ou d'ajouter, cocher (« coche ma tâche »), décocher, modifier, supprimer ou réordonner ses tâches.
 ---
 
 # Kilosaurus Temps — loguer du temps
@@ -60,20 +60,20 @@ réunions…). Si le projet demandé n'existe pas, demande à l'utilisateur plut
 |---|---|---|
 | `logSession` | `id`, `project`, `start`, `end`, `type?`, `note?` | Une session terminée, avec ses heures exactes. **L'action normale pour un agent.** |
 | `logBlock` | `id`, `project`, `hours` (2, 4, 6, 8, 10 ou 12), `date?` (`aaaa-mm-jj`), `type?`, `note?` | Un bloc d'heures sur une journée, sans heures précises. |
-| `start` | `id`, `project`, `type?`, `note?` | Lance le compteur (ferme celui en cours). Sans `type`, garde celui du compteur en cours. |
+| `start` | `id`, `project`, `type?`, `note?` | Lance le compteur (ferme celui en cours) et met aussi à jour le choix partagé. Sans `type`, garde celui du compteur en cours. |
 | `stop` | — | Arrête le compteur. |
 | `history` | `from`, `to` (`aaaa-mm-jj`, 62 jours max) | Les lignes de l'utilisateur sur la période, avec leur `id`, pour faire un bilan ou retrouver une ligne. Ne modifie rien. |
 | `archivedDay` | `day` (`aaaa-mm-jj`) | Les lignes d'un jour figé, telles qu'elles étaient à 6 h le lendemain (supprimées comprises, `deleted: true`). Pour retrouver une version d'origine. Ne modifie rien. |
 | `editEntry` | `id`, `start?`, `end?`, `hours?`, `project?`, `type?`, `note?` | Corrige une ligne (trouvée avec `history`). Session : début < fin ≤ maintenant, 24 h au plus, sans chevauchement. Bloc : heures 2 à 12. |
 | `deleteEntry` | `id` | Supprime une ligne (elle revient avec `undo`). |
 | `select` | `project?`, `type?` | Change le choix partagé. Compteur en cours (hors pause), il bascule aussitôt sur ce choix ; en pause ou arrêté, seul le choix change. |
-| `addTask` | `id`, `description` (200 caractères max), `project?`, `type?` | Ajoute une tâche à la fin de la liste ; `project` et `type` valent le choix par défaut. |
+| `addTask` | `id`, `description` (200 caractères max), `project?`, `type?` | Ajoute une tâche à la fin de la liste (30 tâches à faire au plus) ; `project` et `type` valent le choix par défaut. |
 | `editTask` | `id`, `description?`, `project?`, `type?` | Modifie une tâche. |
 | `deleteTask` | `id` | Supprime une tâche (elle revient avec `undo`). |
 | `moveTask` | `id`, `before` (id d'une tâche à faire, ou `null` pour la fin) | Place une tâche à faire juste avant `before`. |
 | `checkTask` | `id` | Coche une tâche : elle passe dans les faites du jour. |
-| `uncheckTask` | `id` | Décoche une tâche : elle revient dans la liste à faire. |
-| `undo` | `opId` | Annule la dernière action (`status.undo.opId`), puis la précédente au prochain appel. Refusé si une autre action a eu lieu entre-temps. |
+| `uncheckTask` | `id` | Décoche une tâche : elle reprend sa place dans la liste à faire (refusé si la liste a déjà 30 tâches). |
+| `undo` | `opId` | Annule la dernière action (`status.undo.opId`), puis la précédente au prochain appel. Refusé si une autre action a eu lieu entre-temps. Lis d'abord `status.undo.summary` : n'annule que ta propre action, car un tap dans le sélecteur de l'utilisateur est aussi une action annulable. |
 
 `type` : `Misc` (défaut), `Art`, `Dev`, `Writing`… (liste dans `data.types`). Choisis-le d'après
 la demande (« j'ai codé » → Dev, « j'ai dessiné » → Art, « j'ai écrit les dialogues » →
@@ -82,11 +82,12 @@ Writing) ; dans le doute, demande.
 Règles :
 
 - **Tâches** : l'activité d'une tâche ne peut pas être `Pause`. Quand la tâche du haut change
-  (cochée, déplacée, supprimée, ajoutée à une liste vide, ou son projet / son activité modifié), son
+  (cochée, décochée, déplacée, supprimée, ajoutée à une liste vide, ou son projet / son activité modifié), son
   projet et son activité deviennent le choix et le compteur en cours bascule dessus à la même
   seconde : **cocher la tâche du haut change donc le compteur qui tourne**. En pause ou arrêté, seul
   le choix change. Ne coche une tâche que si l'utilisateur le demande. `undo` annule la coche avec
-  la bascule qu'elle a provoquée.
+  la bascule qu'elle a provoquée. La liste à faire tient 30 tâches au plus : `addTask` et `uncheckTask`
+  sont refusés au-delà (« Liste pleine »).
 
 - **`id`** : un identifiant unique par nouvelle ligne (un UUID). Si tu renvoies la même requête
   avec le même `id`, rien n'est écrit en double : en cas de doute après une erreur réseau,

@@ -130,8 +130,8 @@ Au premier lancement, l'app demande le code de l'appareil. Elle le garde ensuite
 - **Choix partagé** : le projet et l’activité choisis sont gardés sur le serveur, les mêmes sur tous
   les appareils (app, téléphone, mini-fenêtre, agent). Compteur en cours, c’est ce qui tourne ;
   sinon, c’est ce que lancera ▶. Lancer un compteur (app, widget, agent) met aussi le choix à jour.
-- **Gros ▶ LANCER** : lance le choix. Si un autre compteur tourne, il se ferme et le nouveau
-  démarre. En cours, il laisse place à PAUSE et STOP.
+- **Gros ▶ LANCER** : lance le choix ; il n’apparaît que compteur arrêté. En cours, il laisse
+  place à PAUSE et STOP.
 - **Activité** (Misc, Writing, Art, Dev…) : la rangée de boutons colorés. Compteur en cours, un tap
   bascule l’activité sans trou : le temps d’avant reste sous l’ancienne. Arrêté, un tap change
   l’activité du prochain lancement.
@@ -141,18 +141,20 @@ Au premier lancement, l'app demande le code de l'appareil. Elle le garde ensuite
   tâche pour la modifier ou la supprimer, glisser la poignée ≡ pour réordonner, décocher une tâche
   faite pour la remettre dans la liste. Les tâches cochées depuis 6 h sont listées dans « Faites
   aujourd’hui » ; elles disparaissent du panneau à 6 h le lendemain. Une tâche n’a jamais l’activité
-  Pause.
-  - **Bascule automatique** : quand la tâche du haut change (cochée, déplacée, supprimée, ou son
-    projet / son activité modifié), le choix prend son projet et son activité. Compteur en cours,
+  Pause. La liste des tâches à faire tient 30 tâches au plus : au-delà, ajouter ou décocher une
+  tâche est refusé (« Liste pleine »).
+  - **Bascule automatique** : quand la tâche du haut change (cochée, décochée, déplacée,
+    supprimée, ajoutée à une liste vide, ou son projet / son activité modifié), le choix prend
+    son projet et son activité. Compteur en cours,
     il bascule à la même seconde ; en pause, la pause continue et Reprendre partira sur la nouvelle
     tâche ; arrêté, seul le choix change.
   - **Choix manuel** : un projet ou une activité choisi à la main tient jusqu’à ce que la tâche du
     haut change.
   - Chaque tâche cochée garde son jour, son début et sa fin ; rien n’en est affiché pour l’instant.
 - **Stop** : ferme le compteur. **+ note** : une note sur le compteur en cours.
-- **⏸ Pause** : le compteur continue, marqué pause (même projet) ; **▶ Reprendre** revient à la
-  tâche d'avant. Les pauses comptent dans le total du jour (« dont N min de pause »), sont hachurées
-  sur la frise et ont leur ligne dans les récaps.
+- **⏸ Pause** : le compteur continue, marqué pause (même projet) ; **▶ Reprendre** repart sur le
+  choix (projet et activité choisis). Les pauses comptent dans le total du jour (« dont N min de
+  pause »), sont hachurées sur la frise et ont leur ligne dans les récaps.
 - **Sessions** : un jour à la fois, avec des flèches pour reculer. Un tap sur une ligne permet de la
   supprimer, ou de corriger son début, sa fin, son projet, son type ou sa note. ⚠ signale une
   session plus longue que le seuil d'oubli (8 h). Demande le réseau.
@@ -180,8 +182,8 @@ Au premier lancement, l'app demande le code de l'appareil. Elle le garde ensuite
   `npx wrangler d1 execute kilosaurus-temps --remote --command "DELETE FROM lockouts"`.
 - **Sauvegardes** : trois filets, tous automatiques.
   - Chaque journée finie est **figée** dans la base à 6 h le lendemain (cron du Worker, toutes les
-    heures) : une copie de ses lignes et des tâches cochées ce jour-là, que la base refuse de modifier ou d'effacer. Lecture : action
-    `archivedDay`.
+    heures) : une copie de ses lignes et des tâches cochées ce jour-là, que la base refuse de
+    modifier ou d'effacer. Lecture : action `archivedDay`.
   - La **mini-fenêtre de bureau** range chaque jour une copie complète et vérifiée dans
     `Documents\PROJECTS\KILOSAURUS\Sauvegardes\` et `G:\Mon Drive\KILOSAURUS\Temps\Sauvegardes\`
     (`kilosaurus-temps_aaaa-mm-jj.json.gz`, jamais écrasés ; dossiers réglables dans `window.json`,
@@ -242,10 +244,11 @@ Utilisation :
 - **▶** relance en type **Writing** le dernier projet travaillé : celui du compteur en cours ou, à
   l'arrêt, du dernier compteur, d'où qu'il ait été lancé (app, PC, agent). Pour changer de projet,
   lancez l'autre une fois dans l'app. **■** arrête le compteur en cours, quel que soit son projet ou
-  son type.
+  son type. Ce ▶, comme « reprendre » après une pause, met aussi à jour le choix partagé ; le
+  widget est sinon inchangé (il ne montre pas les tâches).
 - **En pause** (lancée depuis l'app) : le widget affiche « ⏸ En pause » et la durée de la pause. Le
-  gros bouton devient **▶** et reprend la tâche d'avant la pause ; un petit **■** à côté arrête le
-  compteur.
+  gros bouton devient **▶** et reprend sur le projet d'avant la pause ; un petit **■** à côté
+  arrête le compteur.
 - **Aucune attente** : le widget change d'état au moment du tap, même sans réseau. Les taps partent
   derrière, un par un et dans l'ordre, chacun avec son heure ; sans réseau ils attendent et repartent
   tout seuls (toutes les minutes, au tap suivant, ou à l'ouverture de l'app).
