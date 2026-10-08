@@ -54,6 +54,7 @@ réunions…). Si le projet demandé n'existe pas, demande à l'utilisateur plut
 | `start` | `id`, `project`, `type?`, `note?` | Lance le compteur (ferme celui en cours). Sans `type`, garde celui du compteur en cours. |
 | `stop` | — | Arrête le compteur. |
 | `history` | `from`, `to` (`aaaa-mm-jj`, 62 jours max) | Les lignes de l'utilisateur sur la période, avec leur `id`, pour faire un bilan ou retrouver une ligne. Ne modifie rien. |
+| `archivedDay` | `day` (`aaaa-mm-jj`) | Les lignes d'un jour figé, telles qu'elles étaient à 6 h le lendemain (supprimées comprises, `deleted: true`). Pour retrouver une version d'origine. Ne modifie rien. |
 | `editEntry` | `id`, `start?`, `end?`, `hours?`, `project?`, `type?`, `note?` | Corrige une ligne (trouvée avec `history`). Session : début < fin ≤ maintenant, 24 h au plus, sans chevauchement. Bloc : heures 2 à 12. |
 | `deleteEntry` | `id` | Supprime une ligne (elle revient avec `undo`). |
 | `undo` | `opId` | Annule la dernière action (`status.undo.opId`), puis la précédente au prochain appel. Refusé si une autre action a eu lieu entre-temps. |

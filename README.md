@@ -156,8 +156,19 @@ Au premier lancement, l'app demande le code de l'appareil. Elle le garde ensuite
   mauvais code vous-même, quelqu'un essaie d'en deviner un : changez vos codes. Pour débloquer sans
   attendre :
   `npx wrangler d1 execute kilosaurus-temps --remote --command "DELETE FROM lockouts"`.
-- **Sauvegarde** : D1 peut remettre la base à n'importe quelle minute des 7 derniers jours :
-  `npx wrangler d1 time-travel restore kilosaurus-temps --timestamp <date ISO>`.
+- **Sauvegardes** : trois filets, tous automatiques.
+  - Chaque journée finie est **figée** dans la base à 6 h le lendemain (cron du Worker, toutes les
+    heures) : une copie de ses lignes que la base refuse de modifier ou d'effacer. Lecture : action
+    `archivedDay`.
+  - La **mini-fenêtre de bureau** range chaque jour une copie complète et vérifiée dans
+    `Documents\PROJECTS\KILOSAURUS\Sauvegardes\` et `G:\Mon Drive\KILOSAURUS\Temps\Sauvegardes\`
+    (`kilosaurus-temps_aaaa-mm-jj.json.gz`, jamais écrasés ; dossiers réglables dans `window.json`,
+    clé `backupDirs`). Le détail est dans `desktop.log`.
+  - D1 peut remettre la base à n'importe quelle minute des 7 derniers jours :
+    `npx wrangler d1 time-travel restore kilosaurus-temps --timestamp <date ISO>`.
+
+  Un bandeau orange s'affiche sur tous les appareils si la copie du PC manque ou a plus de 48 h,
+  ou si une journée finie n'a pas été figée.
 
 ## L'app Android (APK) et son widget
 
@@ -282,13 +293,30 @@ Depuis l'app : **menu → + Nouveau projet**. Il se place après les autres. Les
 L'agent a les mêmes actions que l'app, plus `logSession` : une session avec un début et une fin
 quelconques (24 h au plus), refusée si elle chevauche une autre session.
 
+## Restaurer une sauvegarde
+
+1. `node tools/restore.mjs "<dossier>\kilosaurus-temps_aaaa-mm-jj.json.gz" restore.sql` : vérifie
+   l'empreinte du fichier, écrit le SQL et affiche le nombre de lignes par table.
+2. `npx wrangler d1 create kilosaurus-temps-restauree --location weur`
+3. `npx wrangler d1 execute kilosaurus-temps-restauree --remote --file server/schema.sql`
+4. `npx wrangler d1 execute kilosaurus-temps-restauree --remote --file restore.sql`
+5. Relire les comptes et les comparer à ceux de l'étape 1 :
+   `npx wrangler d1 execute kilosaurus-temps-restauree --remote --command "SELECT COUNT(*) FROM entries"`.
+6. Mettre `database_name` et `database_id` de la nouvelle base dans `wrangler.toml`, puis
+   `npm run deploy`.
+
+`restore.sql` contient les heures réelles : il n'est jamais commité (`.gitignore`).
+
+**Avant toute modification du schéma**, une sauvegarde à la main :
+`npx wrangler d1 export kilosaurus-temps --remote --output ..\Sauvegardes\kilosaurus-temps_<date>_manuelle.sql`.
+
 ## Mettre à jour
 
 - **L'API et l'app web** : `npm run deploy` publie les deux ensemble. La nouvelle version s'affiche
   dès l'ouverture suivante de la page : le service worker charge le réseau d'abord et ne garde sa
   copie que pour le hors ligne.
 - **La base** : `server/schema.sql` ne fait que créer ce qui manque ; une modification de table
-  demande sa propre commande SQL.
+  demande sa propre commande SQL. Les tables et triggers ajoutés au schéma s'appliquent avec npm run db:schema (création seulement).
 - **L'APK** embarque sa copie du site : il faut le reconstruire et le réinstaller.
 
 ## Développement
