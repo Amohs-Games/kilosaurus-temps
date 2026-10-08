@@ -416,8 +416,10 @@ export const actions = {
     const project = p.project === undefined ? current.project : await requireProject(ctx, p.project);
     const type = requireType(p.type, current.type);
     if (type === PAUSE) fail('Pause n’est pas une activité à choisir.');
+    // Le choix visé est déjà le choix calculé : on n'écrit pas les réglages d'un choix par défaut.
+    const same = project === current.project && type === current.type;
     await commit(ctx, 'select', `Choix ${project} · ${type}`, [
-      ...choiceChanges(cfg, project, type),
+      ...(same ? [] : choiceChanges(cfg, project, type)),
       ...(await switchTo(ctx, run, project, type, actionTime(ctx))),
     ]);
   },

@@ -554,3 +554,13 @@ test('select avec compteur oublié (25 h) : le choix change, sans bascule ni err
   assert.equal(s.running.end, null);
   assert.deepEqual(s.choice, { project: 'Studio', type: 'Dev' });
 });
+
+test('select identique au choix calculé : n’écrit rien, aucune entrée ops, même sans réglage', async () => {
+  const { call, sqlite } = await makeEnv();
+  const s = ok(await call('select', { project: 'Fluffy' }));
+  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Misc' });
+  assert.equal(opsCount(sqlite), 0);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM settings WHERE key LIKE 'choice_%'").get().n, 0);
+  ok(await call('select', { project: 'Fluffy', type: 'Misc' }));
+  assert.equal(opsCount(sqlite), 0);
+});
