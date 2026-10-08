@@ -7,7 +7,8 @@
  * Chaque écriture enregistre ses changements de lignes et une entrée du journal `ops` dans la même
  * transaction : c'est ce qui permet d'annuler (action `undo`).
  */
-import { dayKey, dayStart, nextDayStart, clock, shortDate } from './tz.js';
+import { dayKey, dayStart, nextDayStart, clock, shortDate, previousDayKey, workDayKey, workDayEnd } from './tz.js';
+import { TABLES, fingerprintSql } from './backup.js';
 
 export const BLOCK_HOURS = [2, 4, 6, 8, 10, 12];
 const OFFSETS = [0, 15, 30, 60];
@@ -17,6 +18,13 @@ const FORBIDDEN_NAME = /[\[\]*?\/\\:]/;
 const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
 const TOO_LONG = 'Une session ne peut pas dépasser 24 h : indique d’abord l’heure de fin du compteur en cours.';
 const WRITE_ACTIONS = ['start', 'stop', 'note', 'logBlock', 'logSession', 'addProject', 'deleteEntry', 'editEntry', 'undo'];
+
+// Sauvegardes. Un appel de Worker a droit à 50 requêtes D1 sur l'offre gratuite (chaque instruction
+// d'un batch compte) : figer un jour en coûte 2, d'où 20 jours au plus par appel.
+export const FREEZE_DAYS_PER_RUN = 20;
+const FREEZE_GRACE_MS = 2 * 3600000; // un jour fini depuis plus de 2 h et pas figé déclenche l'alerte
+const EXPORT_PAGE = 200;             // un appel de Worker a 10 ms de calcul : des pages courtes
+const NEVER = '0000-00-00';
 
 // Types de travail, dans l'ordre d'affichage. Une ligne sans type (historique) vaut Misc.
 export const TYPES = [
@@ -245,6 +253,52 @@ function describe(r) {
 function sameRow(current, expected) {
   if (!current || !expected) return !current && !expected;
   return Object.keys(expected).every((k) => (current[k] ?? null) === (expected[k] ?? null));
+}
+
+// ---- Journées figées ----
+
+function settingWrite(key, value) {
+  return { sql: 'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', params: [key, value] };
+}
+
+// Les lignes d'un jour (supprimées comprises) copiées dans l'archive, et son résumé : une seule
+// transaction. Tout se passe dans la base : le coût pour le Worker ne grandit pas avec l'historique.
+function freezeStatements(day, nowMs) {
+  const cols = ENTRY_COLUMNS.join(', ');
+  return [
+    { sql: `INSERT INTO archive_entries (archived_day, ${cols}) SELECT day, ${cols} FROM entries WHERE day = ?`, params: [day] },
+    {
+      sql: `INSERT INTO archive_days (day, archived_ms, row_count, hours)
+            SELECT ?, ?, COUNT(*), COALESCE(SUM(CASE WHEN deleted_ms IS NOT NULL THEN 0 WHEN kind = 'block' THEN hours
+              WHEN end_ms IS NULL THEN 0 ELSE (end_ms - start_ms) / 3600000.0 END), 0)
+            FROM entries WHERE day = ?`,
+      params: [day, nowMs, day],
+    },
+  ];
+}
+
+// Fige chaque jour fini (6 h passées le lendemain) pas encore figé, du plus ancien au plus récent.
+// `archive_through` retient le dernier jour traité : on ne relit que ce qui vient après. Une ligne
+// ajoutée plus tard sur un jour déjà traité reste dans `entries`, le journal et les copies de bureau.
+// Appelé par le cron du Worker (server/worker.js).
+export async function freezeDays({ db, now }) {
+  const through = (await settings(db)).archive_through || NEVER;
+  const lastFinished = previousDayKey(workDayKey(now));
+  if (through >= lastFinished) return { frozen: [], through };
+  const days = (await db.all(
+    'SELECT DISTINCT day FROM entries WHERE day > ? AND day <= ? ORDER BY day LIMIT ?',
+    [through, lastFinished, FREEZE_DAYS_PER_RUN],
+  )).map((r) => r.day);
+  const already = new Set((await db.all('SELECT day FROM archive_days WHERE day > ? AND day <= ?', [through, lastFinished])).map((r) => r.day));
+  const frozen = [];
+  for (const day of days) {
+    if (already.has(day)) continue;
+    await db.batch(freezeStatements(day, now));
+    frozen.push(day);
+  }
+  const next = days.length < FREEZE_DAYS_PER_RUN ? lastFinished : days[days.length - 1];
+  await db.batch([settingWrite('archive_through', next)]);
+  return { frozen, through: next };
 }
 
 // ---- Actions ----
