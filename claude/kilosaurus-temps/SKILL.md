@@ -36,7 +36,16 @@ adresse est bloquée une heure après trop de codes refusés : n'insiste pas, pr
 
 Chaque action renvoie l'état à jour (`data`) : `projects` (projets existants), `running` (compteur
 en cours), `last` (dernier log), `today` (lignes du jour), `types` (types de travail), `undo` (la
-dernière action annulable, `{ opId, summary }`). Seule exception : `history` renvoie
+dernière action annulable, `{ opId, summary }`), plus :
+
+- `choice` : `{ project, type }`, le projet et l'activité choisis, partagés par tous les appareils.
+  Compteur en cours, c'est ce qui tourne ; sinon, ce que lancera ▶.
+- `tasks` : la liste de tâches de l'utilisateur. D'abord les tâches à faire dans l'ordre de la liste
+  (la première est « la tâche du haut »), puis les tâches faites depuis le dernier 6 h. Chacune :
+  `{ id, description, project, type, position, done, started }` (`done` et `started` sont `null`
+  pour une tâche à faire).
+
+Seule exception : `history` renvoie
 `{ from, to, rows }`.
 
 ## Commence par `status`
@@ -57,6 +66,13 @@ réunions…). Si le projet demandé n'existe pas, demande à l'utilisateur plut
 | `archivedDay` | `day` (`aaaa-mm-jj`) | Les lignes d'un jour figé, telles qu'elles étaient à 6 h le lendemain (supprimées comprises, `deleted: true`). Pour retrouver une version d'origine. Ne modifie rien. |
 | `editEntry` | `id`, `start?`, `end?`, `hours?`, `project?`, `type?`, `note?` | Corrige une ligne (trouvée avec `history`). Session : début < fin ≤ maintenant, 24 h au plus, sans chevauchement. Bloc : heures 2 à 12. |
 | `deleteEntry` | `id` | Supprime une ligne (elle revient avec `undo`). |
+| `select` | `project?`, `type?` | Change le choix partagé. Compteur en cours (hors pause), il bascule aussitôt sur ce choix ; en pause ou arrêté, seul le choix change. |
+| `addTask` | `id`, `description` (200 caractères max), `project?`, `type?` | Ajoute une tâche à la fin de la liste ; `project` et `type` valent le choix par défaut. |
+| `editTask` | `id`, `description?`, `project?`, `type?` | Modifie une tâche. |
+| `deleteTask` | `id` | Supprime une tâche (elle revient avec `undo`). |
+| `moveTask` | `id`, `before` (id d'une tâche à faire, ou `null` pour la fin) | Place une tâche à faire juste avant `before`. |
+| `checkTask` | `id` | Coche une tâche : elle passe dans les faites du jour. |
+| `uncheckTask` | `id` | Décoche une tâche : elle revient dans la liste à faire. |
 | `undo` | `opId` | Annule la dernière action (`status.undo.opId`), puis la précédente au prochain appel. Refusé si une autre action a eu lieu entre-temps. |
 
 `type` : `Misc` (défaut), `Art`, `Dev`, `Writing`… (liste dans `data.types`). Choisis-le d'après
@@ -64,6 +80,13 @@ la demande (« j'ai codé » → Dev, « j'ai dessiné » → Art, « j'ai écri
 Writing) ; dans le doute, demande.
 
 Règles :
+
+- **Tâches** : l'activité d'une tâche ne peut pas être `Pause`. Quand la tâche du haut change
+  (cochée, déplacée, supprimée, ajoutée à une liste vide, ou son projet / son activité modifié), son
+  projet et son activité deviennent le choix et le compteur en cours bascule dessus à la même
+  seconde : **cocher la tâche du haut change donc le compteur qui tourne**. En pause ou arrêté, seul
+  le choix change. Ne coche une tâche que si l'utilisateur le demande. `undo` annule la coche avec
+  la bascule qu'elle a provoquée.
 
 - **`id`** : un identifiant unique par nouvelle ligne (un UUID). Si tu renvoies la même requête
   avec le même `id`, rien n'est écrit en double : en cas de doute après une erreur réseau,

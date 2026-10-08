@@ -124,11 +124,31 @@ Au premier lancement, l'app demande le code de l'appareil. Elle le garde ensuite
 
 - **Grand compteur** : le temps travaillé aujourd’hui, pauses exclues. Dessous, la durée de la séance
   en cours et le cumul de ses pauses. Arrêté, il garde le travail du jour, en grisé.
-- **Type de travail** (Misc, Writing, Art, Dev…) : la rangée de boutons colorés. Compteur en cours,
-  un tap bascule le type sans trou : le temps d'avant reste sous l'ancien type. Compteur arrêté, un
-  tap choisit le type du prochain lancement.
-- **Lancer** : un tap sur un projet, avec le type choisi. Si un autre compteur tourne, il se ferme
-  et le nouveau démarre.
+- **Sélecteur de projet** : une ligne de petits boutons, le projet choisi en plein. Compteur en
+  cours, un tap bascule le compteur sur ce projet, même activité, sans trou. Arrêté ou en pause, un
+  tap change seulement le choix.
+- **Choix partagé** : le projet et l’activité choisis sont gardés sur le serveur, les mêmes sur tous
+  les appareils (app, téléphone, mini-fenêtre, agent). Compteur en cours, c’est ce qui tourne ;
+  sinon, c’est ce que lancera ▶. Lancer un compteur (app, widget, agent) met aussi le choix à jour.
+- **Gros ▶ LANCER** : lance le choix. Si un autre compteur tourne, il se ferme et le nouveau
+  démarre. En cours, il laisse place à PAUSE et STOP.
+- **Activité** (Misc, Writing, Art, Dev…) : la rangée de boutons colorés. Compteur en cours, un tap
+  bascule l’activité sans trou : le temps d’avant reste sous l’ancienne. Arrêté, un tap change
+  l’activité du prochain lancement.
+- **Tâches** : une liste du jour, à préparer le matin. L’écran principal montre la tâche du haut
+  (description, projet · activité) ; la cocher fait monter la suivante. Un tap sur la ligne ouvre le
+  panneau **Tâches** : ajouter (description de 200 caractères au plus, activité, projet), toucher une
+  tâche pour la modifier ou la supprimer, glisser la poignée ≡ pour réordonner, décocher une tâche
+  faite pour la remettre dans la liste. Les tâches cochées depuis 6 h sont listées dans « Faites
+  aujourd’hui » ; elles disparaissent du panneau à 6 h le lendemain. Une tâche n’a jamais l’activité
+  Pause.
+  - **Bascule automatique** : quand la tâche du haut change (cochée, déplacée, supprimée, ou son
+    projet / son activité modifié), le choix prend son projet et son activité. Compteur en cours,
+    il bascule à la même seconde ; en pause, la pause continue et Reprendre partira sur la nouvelle
+    tâche ; arrêté, seul le choix change.
+  - **Choix manuel** : un projet ou une activité choisi à la main tient jusqu’à ce que la tâche du
+    haut change.
+  - Chaque tâche cochée garde son jour, son début et sa fin ; rien n’en est affiché pour l’instant.
 - **Stop** : ferme le compteur. **+ note** : une note sur le compteur en cours.
 - **⏸ Pause** : le compteur continue, marqué pause (même projet) ; **▶ Reprendre** revient à la
   tâche d'avant. Les pauses comptent dans le total du jour (« dont N min de pause »), sont hachurées
@@ -160,7 +180,7 @@ Au premier lancement, l'app demande le code de l'appareil. Elle le garde ensuite
   `npx wrangler d1 execute kilosaurus-temps --remote --command "DELETE FROM lockouts"`.
 - **Sauvegardes** : trois filets, tous automatiques.
   - Chaque journée finie est **figée** dans la base à 6 h le lendemain (cron du Worker, toutes les
-    heures) : une copie de ses lignes que la base refuse de modifier ou d'effacer. Lecture : action
+    heures) : une copie de ses lignes et des tâches cochées ce jour-là, que la base refuse de modifier ou d'effacer. Lecture : action
     `archivedDay`.
   - La **mini-fenêtre de bureau** range chaque jour une copie complète et vérifiée dans
     `Documents\PROJECTS\KILOSAURUS\Sauvegardes\` et `G:\Mon Drive\KILOSAURUS\Temps\Sauvegardes\`
@@ -268,7 +288,9 @@ automatique pointe vers ce dossier : si le dépôt est déplacé, relancez `npm 
 emplacement.
 
 - **Déplacer** : glisser la barre du haut. **Sessions** ouvre la fenêtre des sessions dans une
-  deuxième fenêtre ; à sa fermeture, la mini-fenêtre se met à jour. **Plus d'infos ↗** ouvre la
+  deuxième fenêtre ; à sa fermeture, la mini-fenêtre se met à jour. **Tâches** s’ouvre de même dans
+  sa propre fenêtre : après la mise à jour qui apporte les tâches, redémarrez la mini-fenêtre une
+  fois (icône près de l’horloge → **Quitter**, puis relancez-la). **Plus d'infos ↗** ouvre la
   version complète (journée, récap, blocs) dans Brave, sinon Chrome, sinon le navigateur par défaut.
 - **Icône près de l'horloge** (clic droit) : afficher / masquer, **Verrouiller la position**,
   **Toujours au-dessus**, **Lancer au démarrage**, remettre dans le coin, ouvrir en grand,
