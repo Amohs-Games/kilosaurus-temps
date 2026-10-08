@@ -463,12 +463,12 @@
   }
 
   // La tâche du haut de la liste, au-dessus du compteur : ☐ la coche, un appui ailleurs ouvre le panneau
-  // Tâches. Sans tâche à faire, un simple lien vers le panneau.
+  // Tâches. Sans tâche à faire, un bouton vers le panneau.
   function topTaskLine(s) {
     var t = L.topTask(s);
     if (!t) {
       var done = L.doneTasks(s, Date.now()).length;
-      return '<button class="link tasks-link" data-act="openTasks">+ Tâches' + (done ? ' · ' + done + (done > 1 ? ' faites' : ' faite') : '') + '</button>';
+      return '<button class="tasks-link" data-act="openTasks">+ Tâches' + (done ? ' · ' + done + (done > 1 ? ' faites' : ' faite') : '') + '</button>';
     }
     return '<div class="toptask" data-act="openTasks">' +
       '<button class="check" data-act="checkTop" data-id="' + esc(t.id) + '" aria-label="Cocher la tâche"></button>' +
@@ -1127,12 +1127,19 @@
       '<div class="tasks-head"><h2>' + (t ? 'Tâche' : 'Nouvelle tâche') + '</h2></div>' +
       '<input class="field" id="task-desc" maxlength="200" autocomplete="off" placeholder="Qu’y a-t-il à faire ?" value="' + esc(t ? t.description : '') + '">' +
       '<div class="label">Activité</div>' +
-      '<div class="types">' + L.typesOf(s).filter(function (x) { return x.name !== L.PAUSE_TYPE; }).map(function (x) {
-        return '<button class="type tf-type' + (x.name === form.type ? ' on' : '') + '" style="--c:' + x.color + ';--on:' + L.textOn(x.color) + '" data-act="taskType" data-t="' + esc(x.name) + '">' + esc(x.name) + '</button>';
-      }).join('') + '</div>' +
+      // Comme la rangée Activité de l'écran principal : quatre par rangée, une rangée par famille.
+      '<div class="types">' + (function () {
+        var family = null;
+        return L.typesOf(s).filter(function (x) { return x.name !== L.PAUSE_TYPE; }).map(function (x) {
+          var rowStart = x.family !== family;
+          family = x.family;
+          return '<button class="type tf-type' + (x.name === form.type ? ' on' : '') + (rowStart ? ' row-start' : '') + '" style="--c:' + x.color + ';--on:' + L.textOn(x.color) + '" data-act="taskType" data-t="' + esc(x.name) + '">' + esc(x.name) + '</button>';
+        }).join('');
+      })() + '</div>' +
       '<div class="label">Projet</div>' +
-      '<div class="row">' + s.projects.map(function (p) {
-        return '<button class="chip tf-project' + (p === form.project ? ' on' : '') + '" data-act="taskProject" data-p="' + esc(p) + '">' + esc(p) + '</button>';
+      // Même rangée que le sélecteur de l'écran principal : une ligne, largeur partagée.
+      '<div class="picker">' + s.projects.map(function (p) {
+        return '<button class="pick tf-project' + (p === form.project ? ' on' : '') + '" data-act="taskProject" data-p="' + esc(p) + '">' + esc(p) + '</button>';
       }).join('') + '</div>' +
       '<div class="actions"><button class="secondary" data-act="taskBack">Annuler</button>' +
       '<button class="primary" data-act="taskSave">Enregistrer</button></div>' +

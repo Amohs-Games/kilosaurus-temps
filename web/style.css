@@ -140,14 +140,30 @@ button { cursor: pointer; border: 0; background: none; padding: 0; }
 .tt-desc { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tt-main small { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tt-chev { flex: none; font-size: 26px; line-height: 1; color: var(--muted); }
-.tasks-link { align-self: center; }
+/* Sans tâche à faire : un vrai bouton, de la largeur de la carte, qui ouvre le panneau. */
+.tasks-link {
+  width: 100%;
+  min-height: 48px;
+  border-radius: var(--radius);
+  border: 1.5px solid var(--line);
+  background: var(--card);
+  color: var(--fg);
+  font-weight: 600;
+  font-size: 16px;
+}
 
 /* Sélecteur de projet : petits boutons à contour clair ; le choisi est plein (couleur du texte
    en fond, fond en texte : blanc sur sombre en thème sombre, sombre sur blanc en thème clair). */
-.picker { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; width: 100%; }
+/* Une seule ligne : les boutons se partagent toute la largeur, un nom trop long est coupé. */
+.picker { display: flex; gap: 8px; width: 100%; }
 .pick {
+  flex: 1 1 0;
+  min-width: 0;
   min-height: 38px;
-  padding: 0 14px;
+  padding: 0 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   border-radius: 999px;
   border: 1.5px solid var(--line);
   background: none;
@@ -299,7 +315,8 @@ html.mini .hero-time { font-size: 40px; }
 html.mini .stop { min-height: 40px; font-size: 16px; margin-top: 2px; }
 html.mini .hero .picker { gap: 5px; margin-top: 4px; }
 html.mini .proj { min-height: 42px; font-size: 15px; padding: 4px 8px; }
-html.mini .pick { min-height: 30px; font-size: 13px; padding: 0 10px; }
+html.mini .pick { min-height: 30px; font-size: 13px; padding: 0 4px; }
+html.mini .tasks-link { min-height: 36px; font-size: 14px; }
 html.mini .launch { min-height: 40px; font-size: 16px; }
 html.mini .toptask { padding: 6px 8px; gap: 8px; }
 html.mini .tt-desc { font-size: 14px; }
@@ -419,5 +436,6 @@ html.mini .hero-pause { font-size: 13px; }
 .task-desc { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-body small { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-done .task-desc { text-decoration: line-through; color: var(--muted); }
-.task-form .types { grid-template-columns: repeat(3, 1fr); }
+/* La fiche est plus étroite que l'écran : un cran plus petit pour que « Production » tienne. */
+.task-form .type { font-size: 13px; padding: 0 2px; overflow-wrap: normal; }
 html.mini .task { gap: 4px; }
