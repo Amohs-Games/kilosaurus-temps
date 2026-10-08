@@ -314,7 +314,7 @@
       return;
     }
     // Haut en bas = ordre d'usage : ce qui tourne, choisir un type, lancer, la journée, après coup.
-    app.innerHTML = header(s) + hero(s) +
+    app.innerHTML = header(s) + backupBanner(s) + hero(s) +
       section('Tâche', typeBar(s)) +
       section('Ajouter un bloc d’heures', blocks(), 'add') +
       todayView(s);
@@ -354,6 +354,12 @@
 
   function section(title, body, extraClass) {
     return '<section class="block' + (extraClass ? ' ' + extraClass : '') + '"><h2 class="block-title">' + esc(title) + '</h2>' + body + '</section>';
+  }
+
+  // Sauvegardes en retard : visible partout, ne se ferme pas, disparaît quand elles repassent.
+  function backupBanner(s) {
+    var w = L.backupWarnings(s.backup, Date.now());
+    return w.length ? '<div class="banner-warn" role="alert">' + w.map(esc).join('<br>') + '</div>' : '';
   }
 
   // La carte compteur : toujours là, avec les projets qui le lancent. Au repos, 0:00:00 en grisé dit

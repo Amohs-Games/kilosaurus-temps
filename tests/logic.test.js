@@ -251,3 +251,14 @@ test('oubli : l\'heure de fin proposée va au plus à 24 h du début, jamais dan
   assert.equal(L.forgotMax('2026-10-01T09:00:00+02:00', at('2026-10-03T12:00:00+02:00')).toISOString(), new Date('2026-10-02T09:00:00+02:00').toISOString());
   assert.equal(L.forgotMax('2026-10-01T09:00:00+02:00', at('2026-10-01T18:00:00+02:00')).toISOString(), new Date('2026-10-01T18:00:00+02:00').toISOString());
 });
+
+test('alertes de sauvegarde', () => {
+  const now = Date.parse('2026-10-08T12:00:00+02:00');
+  assert.deepEqual(L.backupWarnings(undefined, now), []);
+  assert.deepEqual(L.backupWarnings({ desktopAt: '2026-10-07T07:00:00.000Z', unfrozenSince: null }, now), []);
+  assert.deepEqual(L.backupWarnings({ desktopAt: null, unfrozenSince: null }, now), ['Aucune sauvegarde sur le PC pour l\'instant.']);
+  assert.deepEqual(L.backupWarnings({ desktopAt: '2026-10-05T07:00:00.000Z', unfrozenSince: '2026-10-03' }, now), [
+    'Pas de sauvegarde sur le PC depuis 3 jours.',
+    'Journées non figées depuis le 03/10.',
+  ]);
+});

@@ -327,13 +327,31 @@
     return out;
   }
 
+  // Bandeau d'alerte : la copie du PC manque ou a plus de 48 h, ou une journée finie n'a pas été
+  // figée (status.backup). Rien si le serveur ne donne pas encore cet état.
+  var BACKUP_LATE_MS = 48 * 3600000;
+  function backupWarnings(backup, nowMs) {
+    if (!backup) return [];
+    var out = [];
+    if (!backup.desktopAt) out.push('Aucune sauvegarde sur le PC pour l\'instant.');
+    else {
+      var age = nowMs - Date.parse(backup.desktopAt);
+      if (age > BACKUP_LATE_MS) out.push('Pas de sauvegarde sur le PC depuis ' + Math.floor(age / 86400000) + ' jours.');
+    }
+    if (backup.unfrozenSince) {
+      var p = backup.unfrozenSince.split('-');
+      out.push('Journées non figées depuis le ' + p[2] + '/' + p[1] + '.');
+    }
+    return out;
+  }
+
   var api = {
     BLOCK_HOURS: BLOCK_HOURS, DEFAULT_TYPES: DEFAULT_TYPES, dayKey: dayKey, hoursBetween: hoursBetween,
     elapsed: elapsed, duration: duration, clock: clock, dayLabel: dayLabel,
     entryEdit: entryEdit, isLong: isLong, forgotMax: forgotMax, visibleProjects: visibleProjects, pickableProjects: pickableProjects,
     isForgotten: isForgotten, applyLocal: applyLocal,
     typesOf: typesOf, typeOf: typeOf, typeColor: typeColor, textOn: textOn, projectColor: projectColor, isPause: isPause, todayPause: todayPause, sessionOf: sessionOf, PAUSE_TYPE: PAUSE_TYPE, rowHours: rowHours, todayTotal: todayTotal,
-    dayTimeline: dayTimeline, weekRange: weekRange, monthRange: monthRange, aggregate: aggregate, recapMatches: recapMatches,
+    dayTimeline: dayTimeline, weekRange: weekRange, monthRange: monthRange, aggregate: aggregate, recapMatches: recapMatches, backupWarnings: backupWarnings,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.KTLogic = api;
