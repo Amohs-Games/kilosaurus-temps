@@ -1,7 +1,7 @@
 // Règles posées dans la base (server/schema.sql) et fuseau de Paris (server/tz.js).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeDb, insertRow, at } from './server-harness.mjs';
+import { makeDb, insertRow, at, SCHEMA } from './server-harness.mjs';
 import { fromSqlite } from '../server/db.js';
 import { dayKey, dayStart, nextDayStart, clock, shortDate, localTime, previousDayKey, workDayKey, workDayEnd } from '../server/tz.js';
 
@@ -73,4 +73,18 @@ test('fuseau : jour de travail de 6 h à 6 h, sûr aux changements d\'heure', ()
   // 29 mars 2026 : passage à l'heure d'été à 2 h ; 6 h = 04:00 UTC.
   assert.equal(workDayEnd('2026-03-28'), at('2026-03-29T04:00:00Z'));
   assert.equal(workDayEnd('2026-10-07'), at('2026-10-08T06:00:00+02:00'));
+});
+
+test('base : journées figées, ni modifiées ni effacées', () => {
+  const db = makeDb();
+  db.prepare("INSERT INTO archive_days (day, archived_ms, row_count, hours) VALUES ('2026-10-01', 1, 1, 1)").run();
+  assert.throws(() => db.prepare('UPDATE archive_days SET row_count = 5').run(), /archive figée/);
+  assert.throws(() => db.prepare('DELETE FROM archive_days').run(), /archive figée/);
+  insertRow(db, { id: 'a', start_ms: at('2026-10-01T09:00:00+02:00'), end_ms: at('2026-10-01T10:00:00+02:00') });
+  db.prepare("INSERT INTO archive_entries SELECT '2026-10-01', * FROM entries").run();
+  assert.equal(db.prepare('SELECT id FROM archive_entries').get().id, 'a');
+  assert.throws(() => db.prepare("UPDATE archive_entries SET note = 'x'").run(), /archive figée/);
+  assert.throws(() => db.prepare('DELETE FROM archive_entries').run(), /archive figée/);
+  assert.throws(() => db.prepare("INSERT INTO archive_entries SELECT '2026-10-01', * FROM entries").run(), /UNIQUE/);
+  db.exec(SCHEMA); // réappliquer le schéma (mise à jour en ligne) ne casse rien
 });

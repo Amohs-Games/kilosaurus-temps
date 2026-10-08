@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS projects (
 );
 
 CREATE TABLE IF NOT EXISTS settings (
-  key TEXT PRIMARY KEY,              -- me, studio, visible, threshold
+  key TEXT PRIMARY KEY,              -- me, studio, visible, threshold, archive_through, backup_desktop
   value TEXT NOT NULL
 );
 
@@ -50,6 +50,40 @@ CREATE TABLE IF NOT EXISTS ops (
   changes TEXT NOT NULL,             -- JSON : [{ table, key, before, after }]
   undone_ms INTEGER
 );
+
+-- Journées figées (sauvegardes) : chaque jour fini (6 h passées le lendemain) est copié ici par le
+-- cron du Worker. Jamais modifié ni effacé : les triggers refusent UPDATE et DELETE. Une correction
+-- faite ensuite dans l'app ne touche que `entries` ; la version d'origine reste ici.
+CREATE TABLE IF NOT EXISTS archive_days (
+  day TEXT PRIMARY KEY,
+  archived_ms INTEGER NOT NULL,
+  row_count INTEGER NOT NULL,        -- lignes copiées, supprimées comprises
+  hours REAL NOT NULL                -- total du jour (sessions terminées et blocs non supprimés)
+);
+
+-- Mêmes colonnes qu'`entries`, dans le même ordre, précédées du jour figé.
+CREATE TABLE IF NOT EXISTS archive_entries (
+  archived_day TEXT NOT NULL,
+  id TEXT NOT NULL,
+  project TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  day TEXT NOT NULL,
+  start_ms INTEGER,
+  end_ms INTEGER,
+  hours REAL,
+  type TEXT NOT NULL,
+  note TEXT NOT NULL,
+  source TEXT NOT NULL,
+  created_ms INTEGER NOT NULL,
+  touched_ms INTEGER NOT NULL,
+  deleted_ms INTEGER,
+  PRIMARY KEY (archived_day, id)
+);
+
+CREATE TRIGGER IF NOT EXISTS archive_days_no_update BEFORE UPDATE ON archive_days BEGIN SELECT RAISE(ABORT, 'archive figée'); END;
+CREATE TRIGGER IF NOT EXISTS archive_days_no_delete BEFORE DELETE ON archive_days BEGIN SELECT RAISE(ABORT, 'archive figée'); END;
+CREATE TRIGGER IF NOT EXISTS archive_entries_no_update BEFORE UPDATE ON archive_entries BEGIN SELECT RAISE(ABORT, 'archive figée'); END;
+CREATE TRIGGER IF NOT EXISTS archive_entries_no_delete BEFORE DELETE ON archive_entries BEGIN SELECT RAISE(ABORT, 'archive figée'); END;
 
 -- Codes refusés par adresse IP (blocage d'une heure après 10 refus en 15 min).
 CREATE TABLE IF NOT EXISTS lockouts (
