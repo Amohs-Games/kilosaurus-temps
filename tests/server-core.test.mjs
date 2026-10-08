@@ -436,3 +436,121 @@ test('caractères de contrôle : refusés dans les notes et les noms de projet, 
   fails(await call('addProject', { name: 'Pro\u0000jet' }), 'invalid', /contrôle/);
   fails(await call('editEntry', { id: 'c2', note: 'x\u0001y' }), 'invalid', /caractère de contrôle/);
 });
+
+// ---- Le choix partagé (projet, activité) ----
+
+const opsCount = (sqlite) => sqlite.prepare('SELECT COUNT(*) AS n FROM ops').get().n;
+
+test('choix : par défaut le premier projet et Misc ; après start puis stop, le dernier travaillé', async () => {
+  const { call, clock } = await makeEnv();
+  assert.deepEqual(ok(await call('status')).choice, { project: 'Fluffy', type: 'Misc' });
+  ok(await call('start', { id: 'a1', project: 'Studio', type: 'Dev' }));
+  clock.advance(10);
+  const s = ok(await call('stop'));
+  assert.deepEqual(s.choice, { project: 'Studio', type: 'Dev' });
+});
+
+test('choix : sans réglage, le compteur en cours hors pause prime sur le dernier travaillé', async () => {
+  const { call, sqlite, clock } = await makeEnv();
+  ok(await call('start', { id: 'a1', project: 'Fluffy', type: 'Dev' }));
+  sqlite.prepare("DELETE FROM settings WHERE key LIKE 'choice_%'").run();
+  clock.advance(10);
+  ok(await call('start', { id: 'p1', project: 'Studio', type: 'Pause' }));
+  sqlite.prepare("DELETE FROM settings WHERE key LIKE 'choice_%'").run();
+  assert.deepEqual(ok(await call('status')).choice, { project: 'Fluffy', type: 'Dev' });
+});
+
+test('select à l’arrêt : change le choix, n’ouvre aucune session, une entrée ops', async () => {
+  const { call, rows, sqlite } = await makeEnv();
+  const s = ok(await call('select', { project: 'Studio', type: 'Art' }));
+  assert.deepEqual(s.choice, { project: 'Studio', type: 'Art' });
+  assert.equal(rows().length, 0);
+  assert.equal(s.running, null);
+  assert.equal(opsCount(sqlite), 1);
+});
+
+test('select : un seul paramètre complète avec le choix actuel', async () => {
+  const { call } = await makeEnv();
+  ok(await call('select', { project: 'Studio', type: 'Art' }));
+  assert.deepEqual(ok(await call('select', { type: 'Dev' })).choice, { project: 'Studio', type: 'Dev' });
+  assert.deepEqual(ok(await call('select', { project: 'Fluffy' })).choice, { project: 'Fluffy', type: 'Dev' });
+});
+
+test('select compteur en marche : bascule à la même seconde', async () => {
+  const { call, rows, clock } = await makeEnv();
+  ok(await call('start', { id: 'a1', project: 'Fluffy', type: 'Dev' }));
+  clock.advance(30);
+  const s = ok(await call('select', { project: 'Studio' }));
+  const [a, b] = rows();
+  assert.equal(a.end_ms, clock.now());
+  assert.equal(b.start_ms, clock.now());
+  assert.equal(b.end_ms, null);
+  assert.equal(b.project, 'Studio');
+  assert.equal(b.type, 'Dev');
+  assert.equal(s.running.project, 'Studio');
+  assert.deepEqual(s.choice, { project: 'Studio', type: 'Dev' });
+});
+
+test('select en pause : la pause continue, seul le choix change', async () => {
+  const { call, rows, clock } = await makeEnv();
+  ok(await call('start', { id: 'w1', project: 'Fluffy', type: 'Dev' }));
+  clock.advance(60);
+  ok(await call('start', { id: 'p1', project: 'Fluffy', type: 'Pause' }));
+  clock.advance(5);
+  const s = ok(await call('select', { project: 'Studio', type: 'Art' }));
+  assert.equal(rows().length, 2);
+  assert.equal(s.running.id, 'p1');
+  assert.equal(s.running.end, null);
+  assert.deepEqual(s.choice, { project: 'Studio', type: 'Art' });
+});
+
+test('select : Pause ou projet inconnu → invalid ; identique au choix → aucune entrée ops', async () => {
+  const { call, sqlite } = await makeEnv();
+  fails(await call('select', { type: 'Pause' }), 'invalid', /Pause n’est pas une activité à choisir\./);
+  fails(await call('select', { project: 'Nope' }), 'invalid');
+  fails(await call('select', { type: 'Nope' }), 'invalid');
+  ok(await call('select', { project: 'Studio' }));
+  assert.equal(opsCount(sqlite), 1);
+  ok(await call('select', { project: 'Studio' }));
+  assert.equal(opsCount(sqlite), 1);
+});
+
+test('select : compteur déjà sur le choix visé → pas de bascule', async () => {
+  const { call, rows, clock } = await makeEnv();
+  ok(await call('start', { id: 'a1', project: 'Fluffy', type: 'Dev' }));
+  clock.advance(5);
+  ok(await call('select', { project: 'Fluffy', type: 'Dev' }));
+  assert.equal(rows().length, 1);
+});
+
+test('start en Pause ne change pas le choix ; un start normal le change', async () => {
+  const { call } = await makeEnv();
+  ok(await call('start', { id: 'w1', project: 'Studio', type: 'Dev' }));
+  const s = ok(await call('start', { id: 'p1', project: 'Fluffy', type: 'Pause' }));
+  assert.deepEqual(s.choice, { project: 'Studio', type: 'Dev' });
+  assert.deepEqual(ok(await call('start', { id: 'w2', project: 'Fluffy', type: 'Art' })).choice, { project: 'Fluffy', type: 'Art' });
+});
+
+test('undo d’un select avec bascule : sessions et choix reviennent', async () => {
+  const { call, rows, clock } = await makeEnv();
+  ok(await call('start', { id: 'a1', project: 'Fluffy', type: 'Dev' }));
+  clock.advance(30);
+  const s = ok(await call('select', { project: 'Studio' }));
+  assert.equal(rows().length, 2);
+  const u = ok(await call('undo', { opId: s.undo.opId }));
+  assert.deepEqual(u.choice, { project: 'Fluffy', type: 'Dev' });
+  assert.equal(u.running.id, 'a1');
+  assert.equal(u.running.end, null);
+  assert.equal(rows().filter((r) => r.deleted_ms == null).length, 1);
+});
+
+test('select avec compteur oublié (25 h) : le choix change, sans bascule ni erreur', async () => {
+  const { call, rows, clock } = await makeEnv();
+  ok(await call('start', { id: 'a1', project: 'Fluffy', type: 'Dev' }));
+  clock.advance(25 * 60);
+  const s = ok(await call('select', { project: 'Studio' }));
+  assert.equal(rows().length, 1);
+  assert.equal(s.running.id, 'a1');
+  assert.equal(s.running.end, null);
+  assert.deepEqual(s.choice, { project: 'Studio', type: 'Dev' });
+});

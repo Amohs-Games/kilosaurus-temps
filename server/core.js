@@ -21,7 +21,7 @@ const CONTROL_IN_NOTE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
 const CONTROL_IN_NAME = /[\u0000-\u001F\u007F]/;
 const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
 const TOO_LONG = 'Une session ne peut pas dépasser 24 h : indique d’abord l’heure de fin du compteur en cours.';
-const WRITE_ACTIONS = ['start', 'stop', 'note', 'logBlock', 'logSession', 'addProject', 'deleteEntry', 'editEntry', 'undo'];
+const WRITE_ACTIONS = ['start', 'stop', 'note', 'logBlock', 'logSession', 'addProject', 'deleteEntry', 'editEntry', 'undo', 'select'];
 
 // Sauvegardes. Un appel de Worker a droit à 50 requêtes D1 sur l'offre gratuite (chaque instruction
 // d'un batch compte) : figer un jour en coûte 2, d'où 20 jours au plus par appel.
@@ -56,6 +56,7 @@ export const TYPES = [
 ];
 const TYPE_NAMES = TYPES.map((t) => t.name);
 const DEFAULT_TYPE = 'Misc';
+const PAUSE = 'Pause';
 // Noms de la première version : encore présents dans l'historique et chez les clients pas à jour.
 const LEGACY_TYPES = { Autre: 'Misc', Narration: 'Writing' };
 
@@ -136,6 +137,43 @@ async function backupState(db, cfg, nowMs) {
   };
 }
 
+// Le choix partagé (projet, activité) : le réglage s'il existe et que le projet existe encore ; sinon
+// le compteur en cours hors pause, le dernier travaillé, le premier projet. Activité par défaut : Misc.
+export async function readChoice(db, cfg, run, lastRow, projects) {
+  if (projects.includes(cfg.choice_project)) {
+    const type = canonicalType(cfg.choice_type);
+    return { project: cfg.choice_project, type: TYPE_NAMES.includes(type) && type !== PAUSE ? type : DEFAULT_TYPE };
+  }
+  const from = run && typeOf(run) !== PAUSE ? run : lastRow;
+  if (from && projects.includes(from.project)) {
+    return { project: from.project, type: typeOf(from) === PAUSE ? DEFAULT_TYPE : typeOf(from) };
+  }
+  return { project: projects[0] || '', type: DEFAULT_TYPE };
+}
+
+// Les réglages qui portent le choix, pour ceux qui diffèrent seulement.
+export function choiceChanges(cfg, project, type) {
+  const changes = [];
+  for (const [key, value] of [['choice_project', project], ['choice_type', type]]) {
+    if (cfg[key] === value) continue;
+    changes.push(change(cfg[key] === undefined ? null : { key, value: cfg[key] }, { key, value }, 'settings'));
+  }
+  return changes;
+}
+
+// Bascule du compteur en cours vers (project, type) à l'instant `at`. Rien à faire sans compteur, en
+// pause, déjà sur ce choix, ou si le compteur est oublié (plus de 24 h) : seul le choix change alors.
+export async function switchTo(ctx, run, project, type, at) {
+  if (!run || typeOf(run) === PAUSE) return [];
+  if (run.project === project && typeOf(run) === type) return [];
+  const start = Math.max(at, run.start_ms);
+  if (start - run.start_ms > MAX_SESSION_MS) return [];
+  return [
+    change(run, { ...run, end_ms: start, touched_ms: ctx.now }),
+    change(null, newSession(ctx, { id: crypto.randomUUID(), project, start, type })),
+  ];
+}
+
 async function status(ctx) {
   const { db } = ctx;
   const run = await running(db);
@@ -152,6 +190,7 @@ async function status(ctx) {
     threshold: Number(cfg.threshold || 8),
     running: toApi(run),
     last: toApi(lastRow),
+    choice: await readChoice(db, cfg, run, lastRow, projects),
     types: TYPES,
     today: todayRows.map(toApi),
     undo: undo ? { opId: undo.id, summary: undo.summary } : null,
@@ -363,7 +402,24 @@ export const actions = {
       changes.push(change(run, { ...run, end_ms: start, touched_ms: ctx.now }));
     }
     changes.push(change(null, newSession(ctx, { id, project, start, type, note })));
+    if (type !== PAUSE) changes.push(...choiceChanges(await settings(ctx.db), project, type));
     await commit(ctx, 'start', `${run ? 'Bascule' : 'Lancement'} ${project} · ${type} à ${clock(start)}`, changes);
+  },
+
+  // Change le projet et/ou l'activité du choix partagé. Si un compteur tourne (hors pause), il bascule
+  // sur le nouveau choix à l'instant du tap ; en pause ou à l'arrêt, seul le choix change.
+  async select(ctx, p) {
+    const { db } = ctx;
+    const run = await running(db);
+    const [cfg, projects, lastRow] = await Promise.all([settings(db), projectNames(db), last(db)]);
+    const current = await readChoice(db, cfg, run, lastRow, projects);
+    const project = p.project === undefined ? current.project : await requireProject(ctx, p.project);
+    const type = requireType(p.type, current.type);
+    if (type === PAUSE) fail('Pause n’est pas une activité à choisir.');
+    await commit(ctx, 'select', `Choix ${project} · ${type}`, [
+      ...choiceChanges(cfg, project, type),
+      ...(await switchTo(ctx, run, project, type, actionTime(ctx))),
+    ]);
   },
 
   async stop(ctx, p) {
