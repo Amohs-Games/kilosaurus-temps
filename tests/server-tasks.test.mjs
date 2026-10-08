@@ -301,3 +301,14 @@ test('status initial : tasks est vide', async () => {
   const { call } = await makeEnv();
   assert.deepEqual(ok(await call('status')).tasks, []);
 });
+
+test('moveTask sans changement d’ordre, positions avec trous : rien ne s’écrit', async () => {
+  const { call, sqlite } = await makeEnv();
+  for (const id of ['A', 'B', 'C']) ok(await call('addTask', { id, description: id }));
+  ok(await call('checkTask', { id: 'A' }));
+  const n = opsCount(sqlite);
+  const before = snapshot(sqlite);
+  ok(await call('moveTask', { id: 'C', before: null }));
+  assert.equal(opsCount(sqlite), n);
+  assert.equal(snapshot(sqlite), before);
+});

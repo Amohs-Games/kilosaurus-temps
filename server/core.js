@@ -645,13 +645,15 @@ export const actions = {
     if (row.done_ms != null) fail('Cette tâche est déjà cochée : elle n’est plus dans la liste.');
     const before = p.before === undefined ? null : p.before;
     if (before !== null && (typeof before !== 'string' || before === row.id)) fail('Position de destination non valide.');
-    const others = (await todoTasks(ctx.db)).filter((t) => t.id !== row.id);
+    const todo = await todoTasks(ctx.db);
+    const others = todo.filter((t) => t.id !== row.id);
     let index = others.length;
     if (before !== null) {
       index = others.findIndex((t) => t.id === before);
       if (index < 0) fail('Position de destination non valide.');
     }
     const order = [...others.slice(0, index), row, ...others.slice(index)];
+    if (order.every((t, i) => t.id === todo[i].id)) return;
     const changes = [];
     order.forEach((t, i) => {
       if (t.position !== i + 1) changes.push(change(t, { ...t, position: i + 1, touched_ms: ctx.now }, 'tasks'));
