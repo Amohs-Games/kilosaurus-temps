@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { makeDb, insertRow, at } from './server-harness.mjs';
 import { fromSqlite } from '../server/db.js';
-import { dayKey, dayStart, nextDayStart, clock, shortDate } from '../server/tz.js';
+import { dayKey, dayStart, nextDayStart, clock, shortDate, localTime, previousDayKey, workDayKey, workDayEnd } from '../server/tz.js';
 
 test('base : un seul compteur en cours', () => {
   const db = makeDb();
@@ -58,4 +58,19 @@ test('fuseau : changement d\'heure (25 octobre 2026, jour de 25 h)', () => {
   assert.equal(start, at('2026-10-24T22:00:00Z'));
   assert.equal(nextDayStart(start), at('2026-10-25T23:00:00Z'));
   assert.equal(dayStart('2026-03-29'), at('2026-03-28T23:00:00Z'));
+});
+
+test('fuseau : jour de travail de 6 h à 6 h, sûr aux changements d\'heure', () => {
+  assert.equal(previousDayKey('2026-03-01'), '2026-02-28');
+  assert.equal(previousDayKey('2026-10-26'), '2026-10-25');
+  assert.equal(localTime('2026-10-08', 6), at('2026-10-08T06:00:00+02:00'));
+  assert.equal(workDayKey(at('2026-10-08T05:59:00+02:00')), '2026-10-07');
+  assert.equal(workDayKey(at('2026-10-08T06:00:00+02:00')), '2026-10-08');
+  assert.equal(workDayKey(at('2026-10-08T23:30:00+02:00')), '2026-10-08');
+  // 25 octobre 2026 : retour à l'heure d'hiver à 3 h ; 6 h = 05:00 UTC.
+  assert.equal(workDayEnd('2026-10-24'), at('2026-10-25T05:00:00Z'));
+  assert.equal(workDayKey(at('2026-10-25T05:30:00+01:00')), '2026-10-24');
+  // 29 mars 2026 : passage à l'heure d'été à 2 h ; 6 h = 04:00 UTC.
+  assert.equal(workDayEnd('2026-03-28'), at('2026-03-29T04:00:00Z'));
+  assert.equal(workDayEnd('2026-10-07'), at('2026-10-08T06:00:00+02:00'));
 });

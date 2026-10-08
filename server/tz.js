@@ -33,3 +33,23 @@ export function nextDayStart(dayStartMs) { return dayStart(dayKey(dayStartMs + 3
 export function clock(ms) { const p = parts(ms); return `${p.hour}:${p.minute}`; }
 
 export function shortDate(ms) { const p = parts(ms); return `${p.day}/${p.month}`; }
+
+// Instant d'une heure ronde de Paris un jour donné. Sûr aux changements d'heure tant que l'heure
+// demandée n'est pas dans le trou de 2 h à 3 h (6 h ne l'est jamais).
+export function localTime(key, hour) {
+  const [y, m, d] = key.split('-').map(Number);
+  const guess = Date.UTC(y, m - 1, d, hour);
+  return guess - offsetMs(guess);
+}
+
+export function previousDayKey(key) { return dayKey(dayStart(key) - 12 * 3600000); }
+
+// Jour de travail : de 6 h à 6 h le lendemain. Avant 6 h du matin, c'est encore celui de la veille.
+export const WORKDAY_HOUR = 6;
+
+export function workDayKey(ms) {
+  const key = dayKey(ms);
+  return ms < localTime(key, WORKDAY_HOUR) ? previousDayKey(key) : key;
+}
+
+export function workDayEnd(key) { return localTime(dayKey(nextDayStart(dayStart(key))), WORKDAY_HOUR); }
