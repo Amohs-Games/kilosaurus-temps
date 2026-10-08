@@ -1,7 +1,7 @@
 // Worker (server/worker.js) : codes, blocage par adresse, routage, à travers l'API D1.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeDb } from './server-harness.mjs';
+import { makeDb, insertRow } from './server-harness.mjs';
 import { d1Shim } from './d1-shim.mjs';
 import { authByCode } from '../server/auth.js';
 import worker, { handleApi } from '../server/worker.js';
@@ -88,4 +88,15 @@ test('routage : une écriture passe de bout en bout', async () => {
   const body = await res.json();
   assert.equal(body.ok, true);
   assert.equal(body.data.running.id, 'a1');
+});
+
+test('cron : fige les jours finis, à l\'heure du déclenchement', async () => {
+  const sqlite = makeDb();
+  insertRow(sqlite, { id: 'a', day: '2026-10-01', start_ms: T0, end_ms: T0 + 3600000 });
+  const env = { ...makeWorkerEnv(), DB: d1Shim(sqlite) };
+  const waits = [];
+  await worker.scheduled({ cron: '5 * * * *', scheduledTime: Date.parse('2026-10-02T07:05:00+02:00') }, env, { waitUntil: (p) => waits.push(p) });
+  await Promise.all(waits);
+  assert.equal(sqlite.prepare('SELECT COUNT(*) n FROM archive_days').get().n, 1);
+  assert.equal(sqlite.prepare("SELECT value FROM settings WHERE key = 'archive_through'").get().value, '2026-10-01');
 });

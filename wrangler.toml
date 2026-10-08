@@ -12,3 +12,7 @@ binding = "ASSETS"
 binding = "DB"
 database_name = "kilosaurus-temps"
 database_id = "ed9c49af-c25b-466d-99ea-70763b77f053"
+
+# Journées figées (sauvegardes) : toutes les heures à la 5e minute (server/worker.js, scheduled).
+[triggers]
+crons = ["5 * * * *"]

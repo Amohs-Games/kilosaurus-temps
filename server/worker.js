@@ -4,7 +4,7 @@
  * Protocole : corps JSON en text/plain (pas de requête préalable CORS), réponse { ok, data } ou
  * { ok: false, error: { code, message } }.
  */
-import { handleRequest } from './core.js';
+import { handleRequest, freezeDays } from './core.js';
 import { authByCode, isLocked, recordFailure } from './auth.js';
 import { fromD1 } from './db.js';
 
@@ -53,5 +53,11 @@ export default {
       return json({ ok: true, data: { service: 'kilosaurus-temps' } });
     }
     return env.ASSETS.fetch(request);
+  },
+
+  // Cron (wrangler.toml, toutes les heures) : fige les journées finies. Une erreur fait échouer
+  // l'exécution, visible dans les journaux du Worker ; l'heure suivante reprend où on en était.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(freezeDays({ db: fromD1(env.DB), now: event.scheduledTime }));
   },
 };
