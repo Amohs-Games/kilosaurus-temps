@@ -21,16 +21,6 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name=".ConfigActivity"
-            android:exported="true"
-            android:label="Réglage du widget"
-            android:excludeFromRecents="true">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
-            </intent-filter>
-        </activity>
-
         <receiver
             android:name=".WidgetProvider"
             android:exported="true"

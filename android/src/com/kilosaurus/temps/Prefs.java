@@ -13,7 +13,7 @@ import java.time.ZoneId;
 
 /**
  * Réglages et état affiché, stockés sur le téléphone.
- * Le code et l'URL sont propres à l'appareil ; le projet est propre à chaque widget posé.
+ * Le code (partagé par l'app à la connexion) et l'URL sont propres à l'appareil.
  * L'état « compteur en cours » et le total du jour sont ceux de la personne, partagés par tous ses
  * widgets. Le widget change cet état lui-même au tap ; la file `queue` porte les actions pas encore
  * confirmées par le serveur, et tant qu'elle n'est pas vide, l'état du serveur ne l'écrase pas.
@@ -44,26 +44,12 @@ final class Prefs {
         return u.contains("script.google.com") ? Api.DEFAULT_URL : u;
     }
 
-    void setAccess(String code, String url) {
-        sp.edit().putString("code", code.trim()).putString("url", url.trim()).apply();
-    }
-
     void setCode(String code) {
         sp.edit().putString("code", code.trim()).apply();
     }
 
     void setMessage(String message) {
         sp.edit().putString("message", message).apply();
-    }
-
-    String widgetProject(int widgetId) { return sp.getString("project_" + widgetId, ""); }
-
-    void setWidgetProject(int widgetId, String project) {
-        sp.edit().putString("project_" + widgetId, project).apply();
-    }
-
-    void forgetWidget(int widgetId) {
-        sp.edit().remove("project_" + widgetId).apply();
     }
 
     // ---- Repères ----
@@ -87,6 +73,9 @@ final class Prefs {
     boolean isPaused() { return isRunning() && PAUSE_TYPE.equals(runningType()); }
 
     /** Tâche à reprendre après la pause : celle du morceau que la pause a fermé, sinon Writing. */
+    /** Projet du ▶ : celui du compteur en cours ou, à l'arrêt, du dernier compteur, d'où qu'il ait été lancé. */
+    String lastProject() { return sp.getString("lastProject", ""); }
+
     String resumeType() { return sp.getString("resumeType", WidgetProvider.WIDGET_TYPE); }
 
     /** Noms de la première version (Autre, Narration), encore possibles dans un état mémorisé. */
@@ -98,7 +87,7 @@ final class Prefs {
 
     /** Lance le compteur affiché, sans attendre le serveur. */
     void startLocal(String project, String type, long at) {
-        sp.edit().putString("runningProject", project).putString("runningType", type).putLong("runningStart", at)
+        sp.edit().putString("runningProject", project).putString("lastProject", project).putString("runningType", type).putLong("runningStart", at)
             .putInt("tapSeq", tapSeq() + 1).apply();
     }
 
@@ -158,7 +147,7 @@ final class Prefs {
         if (running != null) {
             long start = Instant.parse(running.optString("start")).toEpochMilli();
             String project = running.optString("project", "");
-            e.putString("runningProject", project);
+            e.putString("runningProject", project).putString("lastProject", project);
             e.putString("runningType", running.optString("type", "Misc"));
             e.putLong("runningStart", start);
             if (PAUSE_TYPE.equals(canonicalType(running.optString("type", "")))) {
@@ -166,6 +155,9 @@ final class Prefs {
             }
         } else {
             e.remove("runningProject").remove("runningType").remove("runningStart");
+            JSONObject last = data.optJSONObject("last");
+            String lastProject = last == null ? "" : last.optString("project", "");
+            if (!lastProject.isEmpty() && !"null".equals(lastProject)) e.putString("lastProject", lastProject);
         }
         if (today != null) e.putString("todayKey", todayKey()).putLong("todayDoneMs", doneMs(today));
         e.apply();

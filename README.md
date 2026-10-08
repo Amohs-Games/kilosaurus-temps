@@ -201,13 +201,15 @@ un build d'essai y est copié aussi.
 
 1. Appui long sur l'écran d'accueil → **Widgets** → **Kilosaurus Temps** → **Lecture / stop**
    (3 × 1 case, redimensionnable).
-2. Le réglage s'ouvre : code (déjà rempli si vous vous êtes connecté dans l'app), puis **Charger mes
-   projets**, choix du projet, **Enregistrer**.
+2. Rien à régler : le widget prend le code de l'app (connectez-vous d'abord dans l'app) et son
+   projet est le dernier travaillé.
 
 Utilisation :
 
-- **▶** lance le projet du widget en type **Writing**. **■** arrête le compteur en cours, quel que
-  soit son projet ou son type.
+- **▶** relance en type **Writing** le dernier projet travaillé : celui du compteur en cours ou, à
+  l'arrêt, du dernier compteur, d'où qu'il ait été lancé (app, PC, agent). Pour changer de projet,
+  lancez l'autre une fois dans l'app. **■** arrête le compteur en cours, quel que soit son projet ou
+  son type.
 - **En pause** (lancée depuis l'app) : le widget affiche « ⏸ En pause » et la durée de la pause. Le
   gros bouton devient **▶** et reprend la tâche d'avant la pause ; un petit **■** à côté arrête le
   compteur.
@@ -221,12 +223,13 @@ Utilisation :
   de fuseau, et à minuit (le total « Aujourd'hui » repart de zéro, à quelques minutes près).
 - **Compteur oublié** : au-delà de 8 h, un message remplace « Aujourd'hui » ; le toucher ouvre l'app,
   qui demande l'heure de fin.
-- **Toucher le nom du projet** rouvre le réglage. Toucher le message relance l'envoi ou relit l'état.
+- **Tout appui hors des boutons** ouvre l'app (le fond, le nom du projet, le message). L'ouverture de
+  l'app relance aussi l'envoi des taps en attente.
 - Un compteur lancé depuis l'app apparaît tout de suite sur le widget. Lancé depuis un autre
   appareil, il apparaît au prochain tap, à l'ouverture de l'app, ou au plus tard après 30 min
   (limite d'Android).
-- Un widget réglé avant la v2 garde son réglage : l'ancienne adresse (Apps Script) est remplacée
-  toute seule par la nouvelle.
+- Un widget posé avant la v2 garde son code ; l'ancienne adresse (Apps Script) est remplacée toute
+  seule par la nouvelle.
 
 ## La mini-fenêtre de bureau (Windows)
 

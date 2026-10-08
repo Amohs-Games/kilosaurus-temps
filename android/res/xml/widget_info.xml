@@ -9,7 +9,5 @@
     android:resizeMode="horizontal|vertical"
     android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/widget"
-    android:configure="com.kilosaurus.temps.ConfigActivity"
-    android:widgetFeatures="reconfigurable"
     android:widgetCategory="home_screen"
     android:description="@string/widget_description" />

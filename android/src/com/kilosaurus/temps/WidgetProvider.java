@@ -22,9 +22,11 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Widget lecture / stop. Le téléphone sert à écrire : ▶ lance le projet du widget en type Writing,
- * ■ arrête le compteur en cours, d'où qu'il vienne. En pause (lancée depuis l'app), le gros bouton
- * devient ▶ et reprend la tâche d'avant la pause ; un petit ■ à côté arrête le compteur.
+ * Widget lecture / stop. Le téléphone sert à écrire : ▶ relance en type Writing le dernier projet
+ * travaillé (celui du dernier compteur, lancé n'importe où : pour en changer, on lance l'autre projet
+ * une fois dans l'app), ■ arrête le compteur en cours, d'où qu'il vienne. En pause (lancée depuis l'app), le gros bouton
+ * devient ▶ et reprend la tâche d'avant la pause ; un petit ■ à côté arrête le compteur. Tout appui
+ * hors des boutons ouvre l'app (connexion, compteur oublié, envoi en attente : tout se règle là).
  *
  * Zéro attente : un tap change l'état affiché (Prefs) et met l'action en file, sans réseau. Un seul
  * envoyeur vide la file derrière, dans l'ordre, chaque action avec l'heure de son tap (tapTime, à
@@ -55,8 +57,7 @@ public class WidgetProvider extends AppWidgetProvider {
     public void onReceive(Context ctx, Intent intent) {
         String action = intent.getAction();
         if (ACTION_TOGGLE.equals(action) || ACTION_STOP.equals(action)) {
-            int widgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID);
-            toggle(ctx, widgetId, ACTION_STOP.equals(action));
+            toggle(ctx, ACTION_STOP.equals(action));
             background(ctx, () -> send(ctx));
         } else if (ACTION_REFRESH.equals(action) || AppWidgetManager.ACTION_APPWIDGET_UPDATE.equals(action) || isClockEvent(action)) {
             renderAll(ctx);
@@ -81,21 +82,15 @@ public class WidgetProvider extends AppWidgetProvider {
         }).start();
     }
 
-    @Override
-    public void onDeleted(Context ctx, int[] widgetIds) {
-        Prefs p = new Prefs(ctx);
-        for (int id : widgetIds) p.forgetWidget(id);
-    }
-
     /**
      * Le tap : état affiché changé et action mise en file, tout de suite, sans réseau. Gros bouton :
      * lance, reprend la pause ou arrête ; petit ■ (stopOnly, visible en pause) : arrête.
      */
-    private static void toggle(Context ctx, int widgetId, boolean stopOnly) {
+    private static void toggle(Context ctx, boolean stopOnly) {
         Prefs p = new Prefs(ctx);
         synchronized (LOCK) {
             if (p.code().isEmpty()) {
-                p.setMessage("Touche le nom du projet pour régler le widget.");
+                p.setMessage("Ouvre l'app pour te connecter.");
             } else {
                 long now = p.serverNow();
                 JSONObject item = new JSONObject();
@@ -115,9 +110,9 @@ public class WidgetProvider extends AppWidgetProvider {
                         renderAll(ctx); // déjà arrêté (petit ■ d'un affichage en retard)
                         return;
                     } else {
-                        String project = p.widgetProject(widgetId);
+                        String project = p.lastProject();
                         if (project.isEmpty()) {
-                            p.setMessage("Touche le nom du projet pour en choisir un.");
+                            p.setMessage("Lance un projet une fois dans l'app.");
                             renderAll(ctx);
                             return;
                         }
@@ -253,7 +248,7 @@ public class WidgetProvider extends AppWidgetProvider {
     }
 
     static String describe(Api.ApiException e) {
-        if ("unauthorized".equals(e.kind)) return "Code refusé : touche le nom du projet pour le corriger.";
+        if ("unauthorized".equals(e.kind)) return "Code refusé : ouvre l'app pour le corriger.";
         if ("busy".equals(e.kind)) return "Serveur occupé, réessaie.";
         if ("locked".equals(e.kind)) return "Accès bloqué pour une heure (trop de codes refusés).";
         if ("invalid".equals(e.kind) || "server".equals(e.kind)) return "Refusé : " + e.getMessage();
@@ -290,8 +285,8 @@ public class WidgetProvider extends AppWidgetProvider {
             v.setTextViewText(R.id.button, paused ? "▶" : "■");
             v.setInt(R.id.button, "setBackgroundResource", paused ? R.drawable.btn_play : R.drawable.btn_stop);
         } else {
-            String project = p.widgetProject(widgetId);
-            v.setTextViewText(R.id.title, project.isEmpty() ? "Choisir un projet" : project + " · " + WIDGET_TYPE);
+            String project = p.lastProject();
+            v.setTextViewText(R.id.title, project.isEmpty() ? "Kilosaurus Temps" : project + " · " + WIDGET_TYPE);
             v.setChronometer(R.id.chrono, elapsedNow, null, false);
             v.setChronometer(R.id.today, elapsedNow, null, false);
             v.setTextViewText(R.id.chrono_idle, "00:00");
@@ -310,23 +305,16 @@ public class WidgetProvider extends AppWidgetProvider {
         v.setViewVisibility(R.id.today, message.isEmpty() && running ? View.VISIBLE : View.GONE);
         v.setViewVisibility(R.id.today_idle, message.isEmpty() && !running ? View.VISIBLE : View.GONE);
 
-        // Un appui sur le widget (hors bouton, nom du projet et message) ouvre l'app.
-        v.setOnClickPendingIntent(R.id.root, PendingIntent.getActivity(ctx, OPEN_APP_REQUEST + widgetId,
+        // Tout appui hors des deux boutons ouvre l'app : le fond, le projet et le message (compteur
+        // oublié, code refusé, envoi en attente : l'app le règle, et relance l'envoi à son ouverture).
+        PendingIntent openApp = PendingIntent.getActivity(ctx, OPEN_APP_REQUEST + widgetId,
             new Intent(ctx, MainActivity.class).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        v.setOnClickPendingIntent(R.id.root, openApp);
+        v.setOnClickPendingIntent(R.id.title, openApp);
+        v.setOnClickPendingIntent(R.id.message, openApp);
         v.setOnClickPendingIntent(R.id.button, broadcast(ctx, ACTION_TOGGLE, widgetId));
         v.setOnClickPendingIntent(R.id.stop_small, broadcast(ctx, ACTION_STOP, widgetId));
-        PendingIntent messageTap = forgotten
-            ? PendingIntent.getActivity(ctx, OPEN_APP_REQUEST + widgetId,
-                new Intent(ctx, MainActivity.class).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)
-            : broadcast(ctx, ACTION_REFRESH, widgetId);
-        v.setOnClickPendingIntent(R.id.message, messageTap);
-        Intent config = new Intent(ctx, ConfigActivity.class)
-            .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
-            .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-        v.setOnClickPendingIntent(R.id.title, PendingIntent.getActivity(ctx, widgetId, config,
-            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
 
         mgr.updateAppWidget(widgetId, v);
     }
