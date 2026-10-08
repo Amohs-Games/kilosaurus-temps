@@ -17,7 +17,7 @@ test('sauvegarde : toutes les tables du schéma sont décrites, colonne par colo
   }
 });
 
-test('sauvegarde : l\'empreinte JavaScript égale celle de SQLite (accents, emoji, vides, réels)', () => {
+test('sauvegarde : l’empreinte JavaScript égale celle de SQLite (accents, emoji, vides, réels)', () => {
   const db = makeDb({ projects: ['Fluffy', 'Héïrfall 🦖'] });
   insertRow(db, { id: 'a', start_ms: at('2026-10-01T09:00:00+02:00'), end_ms: at('2026-10-01T10:30:00+02:00'), note: 'café 🦖 « menus »' });
   insertRow(db, { id: 'b', kind: 'block', start_ms: null, hours: 3.5, deleted_ms: at('2026-10-02T09:00:00+02:00') });

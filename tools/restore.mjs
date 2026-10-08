@@ -19,7 +19,8 @@ function literal(v) {
   return "'" + String(v).replace(/'/g, "''") + "'";
 }
 
-// Les lignes dans l'ordre de l'export (celui de la base d'origine) : mêmes rowid, même ordre.
+// Les lignes dans l'ordre de l'export (celui de la base d'origine) : même ordre ; les identifiants
+// sont conservés là où ils sont la clé (ops), les autres tables reçoivent des rowid renumérotés.
 export function restoreSql(doc) {
   const lines = [`-- Restauration Kilosaurus Temps, export du ${doc.exportedAt}`];
   for (const t of TABLES) {

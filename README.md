@@ -300,10 +300,12 @@ quelconques (24 h au plus), refusée si elle chevauche une autre session.
 2. `npx wrangler d1 create kilosaurus-temps-restauree --location weur`
 3. `npx wrangler d1 execute kilosaurus-temps-restauree --remote --file server/schema.sql`
 4. `npx wrangler d1 execute kilosaurus-temps-restauree --remote --file restore.sql`
-5. Relire les comptes et les comparer à ceux de l'étape 1 :
-   `npx wrangler d1 execute kilosaurus-temps-restauree --remote --command "SELECT COUNT(*) FROM entries"`.
+5. Relire les comptes des six tables et les comparer à ceux affichés à l'étape 1 :
+   `npx wrangler d1 execute kilosaurus-temps-restauree --remote --command "SELECT (SELECT COUNT(*) FROM projects) p, (SELECT COUNT(*) FROM settings) s, (SELECT COUNT(*) FROM entries) e, (SELECT COUNT(*) FROM ops) o, (SELECT COUNT(*) FROM archive_days) d, (SELECT COUNT(*) FROM archive_entries) a"`.
 6. Mettre `database_name` et `database_id` de la nouvelle base dans `wrangler.toml`, puis
-   `npm run deploy`.
+   `npm run deploy`. Remplacer aussi le nom `kilosaurus-temps` dans le script `db:schema` de
+   `package.json` et dans les commandes de ce README (time travel, déblocage des codes), sinon les
+   prochaines mises à jour du schéma partent vers l'ancienne base.
 
 `restore.sql` contient les heures réelles : il n'est jamais commité (`.gitignore`).
 
@@ -316,7 +318,8 @@ quelconques (24 h au plus), refusée si elle chevauche une autre session.
   dès l'ouverture suivante de la page : le service worker charge le réseau d'abord et ne garde sa
   copie que pour le hors ligne.
 - **La base** : `server/schema.sql` ne fait que créer ce qui manque ; une modification de table
-  demande sa propre commande SQL. Les tables et triggers ajoutés au schéma s'appliquent avec npm run db:schema (création seulement).
+  demande sa propre commande SQL. Les tables et triggers ajoutés au schéma s'appliquent avec
+  `npm run db:schema` (création seulement).
 - **L'APK** embarque sa copie du site : il faut le reconstruire et le réinstaller.
 
 ## Développement

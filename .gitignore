@@ -5,6 +5,9 @@ reprise*.sql
 reprise*.json
 # SQL de restauration d'une sauvegarde (données réelles).
 restore*.sql
+# Sauvegardes (données réelles) : jamais dans le dépôt, même posées là par erreur.
+*.json.gz
+kilosaurus-temps_*
 # Cache local de wrangler.
 .wrangler/
 ~$*
