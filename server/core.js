@@ -59,6 +59,8 @@ const DEFAULT_TYPE = 'Misc';
 // Noms de la première version : encore présents dans l'historique et chez les clients pas à jour.
 const LEGACY_TYPES = { Autre: 'Misc', Narration: 'Writing' };
 
+export const TASK_COLUMNS = ['id', 'description', 'project', 'type', 'position', 'done_day', 'started_ms', 'done_ms', 'source', 'created_ms', 'touched_ms', 'deleted_ms'];
+const SETTING_COLUMNS = ['key', 'value'];
 export const ENTRY_COLUMNS = ['id', 'project', 'kind', 'day', 'start_ms', 'end_ms', 'hours', 'type', 'note', 'source', 'created_ms', 'touched_ms', 'deleted_ms'];
 export const ACTIVE = 'deleted_ms IS NULL';
 
@@ -224,29 +226,44 @@ function newBlock(ctx, f) {
 
 // ---- Journal ----
 
-export function plain(row) {
+const COLUMNS = { entries: ENTRY_COLUMNS, tasks: TASK_COLUMNS, settings: SETTING_COLUMNS };
+
+export function plain(row, table = 'entries') {
   if (!row) return null;
   const out = {};
-  for (const c of ENTRY_COLUMNS) out[c] = row[c] ?? null;
+  for (const c of COLUMNS[table]) out[c] = row[c] ?? null;
   return out;
 }
-export function change(before, after) {
-  return { table: 'entries', key: (after || before).id, before: plain(before), after: plain(after) };
+export function change(before, after, table = 'entries') {
+  const r = after || before;
+  return { table, key: table === 'settings' ? r.key : r.id, before: plain(before, table), after: plain(after, table) };
 }
 
-// Écriture d'une ligne dans son état complet (création ou remplacement), ou retrait d'un projet.
+// Écriture d'une ligne dans son état complet (création ou remplacement), ou retrait d'un projet ou d'un réglage.
 export function writeRow(table, key, row) {
   if (table === 'projects') {
     return row
       ? { sql: 'INSERT INTO projects (name, position) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET position = excluded.position', params: [row.name, row.position] }
       : { sql: 'DELETE FROM projects WHERE name = ?', params: [key] };
   }
-  const cols = ENTRY_COLUMNS;
+  if (table === 'settings') {
+    return row
+      ? settingWrite(row.key, row.value)
+      : { sql: 'DELETE FROM settings WHERE key = ?', params: [key] };
+  }
+  const cols = COLUMNS[table];
   return {
-    sql: `INSERT INTO entries (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})
+    sql: `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})
           ON CONFLICT(id) DO UPDATE SET ${cols.slice(1).map((c) => `${c} = excluded.${c}`).join(', ')}`,
     params: cols.map((c) => row[c] ?? null),
   };
+}
+
+// La ligne actuelle d'une table, au format `plain` (projets : { name, position }).
+export async function readRow(db, table, key) {
+  if (table === 'projects') return db.first('SELECT name, position FROM projects WHERE name = ?', [key]);
+  if (table === 'settings') return plain(await db.first('SELECT key, value FROM settings WHERE key = ?', [key]), 'settings');
+  return plain(await db.first(`SELECT * FROM ${table} WHERE id = ?`, [key]), table);
 }
 
 // Les changements, dans l'ordre où ils s'appliquent, et leur entrée de journal : une seule transaction.
@@ -472,12 +489,10 @@ export const actions = {
     if (!latest || latest.id !== opId) fail('Une autre action a eu lieu entre-temps : rien n’est annulé.');
     const stmts = [];
     for (const c of JSON.parse(op.changes).reverse()) {
-      const current = c.table === 'projects'
-        ? await ctx.db.first('SELECT name, position FROM projects WHERE name = ?', [c.key])
-        : plain(await byId(ctx.db, c.key));
+      const current = await readRow(ctx.db, c.table, c.key);
       if (!sameRow(current, c.after)) fail('La ligne a changé depuis : rien n’est annulé.');
-      // Une ligne créée par l'action est marquée supprimée : son id reste pris (idempotence).
-      const restore = c.table === 'entries' && !c.before ? { ...c.after, deleted_ms: ctx.now } : c.before;
+      // Une entrée ou une tâche créée par l'action est marquée supprimée : son id reste pris (idempotence).
+      const restore = (c.table === 'entries' || c.table === 'tasks') && !c.before ? { ...c.after, deleted_ms: ctx.now } : c.before;
       stmts.push(writeRow(c.table, c.key, restore));
     }
     stmts.push({ sql: 'UPDATE ops SET undone_ms = ? WHERE id = ?', params: [ctx.now, opId] });

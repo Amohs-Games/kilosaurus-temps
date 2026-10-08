@@ -40,6 +40,25 @@ CREATE INDEX IF NOT EXISTS entries_day ON entries (day);
 CREATE INDEX IF NOT EXISTS entries_start ON entries (start_ms);
 CREATE INDEX IF NOT EXISTS entries_touched ON entries (touched_ms);
 
+-- Liste de tâches. Une suppression est douce : deleted_ms. done_day : jour de travail de la coche.
+CREATE TABLE IF NOT EXISTS tasks (
+  id TEXT PRIMARY KEY,               -- créé par le client : une requête rejouée n'écrit pas deux fois
+  description TEXT NOT NULL,
+  project TEXT NOT NULL,
+  type TEXT NOT NULL,
+  position INTEGER NOT NULL,         -- ordre dans la liste
+  done_day TEXT,                     -- jour de travail de la coche (aaaa-mm-jj)
+  started_ms INTEGER,
+  done_ms INTEGER,                   -- vide : à faire
+  source TEXT NOT NULL,
+  created_ms INTEGER NOT NULL,
+  touched_ms INTEGER NOT NULL,
+  deleted_ms INTEGER,
+  CHECK ((done_ms IS NULL) = (done_day IS NULL))
+);
+CREATE INDEX IF NOT EXISTS tasks_list ON tasks (deleted_ms, done_ms, position);
+CREATE INDEX IF NOT EXISTS tasks_done_day ON tasks (done_day);
+
 -- Journal des écritures, pour annuler : chaque action garde l'état avant / après des lignes touchées.
 CREATE TABLE IF NOT EXISTS ops (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -80,10 +99,31 @@ CREATE TABLE IF NOT EXISTS archive_entries (
   PRIMARY KEY (archived_day, id)
 );
 
+-- Mêmes colonnes que `tasks`, dans le même ordre, précédées du jour figé.
+CREATE TABLE IF NOT EXISTS archive_tasks (
+  archived_day TEXT NOT NULL,
+  id TEXT NOT NULL,
+  description TEXT NOT NULL,
+  project TEXT NOT NULL,
+  type TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  done_day TEXT,
+  started_ms INTEGER,
+  done_ms INTEGER,
+  source TEXT NOT NULL,
+  created_ms INTEGER NOT NULL,
+  touched_ms INTEGER NOT NULL,
+  deleted_ms INTEGER,
+  PRIMARY KEY (archived_day, id)
+);
+
 CREATE TRIGGER IF NOT EXISTS archive_days_no_update BEFORE UPDATE ON archive_days BEGIN SELECT RAISE(ABORT, 'archive figée'); END;
 CREATE TRIGGER IF NOT EXISTS archive_days_no_delete BEFORE DELETE ON archive_days BEGIN SELECT RAISE(ABORT, 'archive figée'); END;
 CREATE TRIGGER IF NOT EXISTS archive_entries_no_update BEFORE UPDATE ON archive_entries BEGIN SELECT RAISE(ABORT, 'archive figée'); END;
 CREATE TRIGGER IF NOT EXISTS archive_entries_no_delete BEFORE DELETE ON archive_entries BEGIN SELECT RAISE(ABORT, 'archive figée'); END;
+
+CREATE TRIGGER IF NOT EXISTS archive_tasks_no_update BEFORE UPDATE ON archive_tasks BEGIN SELECT RAISE(ABORT, 'archive figée'); END;
+CREATE TRIGGER IF NOT EXISTS archive_tasks_no_delete BEFORE DELETE ON archive_tasks BEGIN SELECT RAISE(ABORT, 'archive figée'); END;
 
 -- Codes refusés par adresse IP (blocage d'une heure après 10 refus en 15 min).
 CREATE TABLE IF NOT EXISTS lockouts (

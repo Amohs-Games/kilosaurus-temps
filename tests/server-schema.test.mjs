@@ -88,3 +88,31 @@ test('base : journées figées, ni modifiées ni effacées', () => {
   assert.throws(() => db.prepare("INSERT INTO archive_entries SELECT '2026-10-01', * FROM entries").run(), /UNIQUE/);
   db.exec(SCHEMA); // réappliquer le schéma (mise à jour en ligne) ne casse rien
 });
+
+const TASK = {
+  id: 't1', description: 'Rigger le bras', project: 'Fluffy', type: 'Misc', position: 1, done_day: null, started_ms: null,
+  done_ms: null, source: 'app', created_ms: 1, touched_ms: 1, deleted_ms: null,
+};
+function insertTask(db, fields = {}, table = 'tasks') {
+  const row = { ...TASK, ...fields };
+  const cols = Object.keys(row);
+  db.prepare(`INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`).run(...cols.map((c) => row[c]));
+}
+
+test('base : tâches, une coche porte son jour de travail', () => {
+  const db = makeDb();
+  insertTask(db);
+  insertTask(db, { id: 't2', done_ms: 5, done_day: '2026-10-01' });
+  assert.throws(() => insertTask(db, { id: 't3', done_ms: 5 }), /CHECK/);
+  assert.throws(() => insertTask(db, { id: 't4', done_day: '2026-10-01' }), /CHECK/);
+});
+
+test('base : tâches figées, ni modifiées ni effacées', () => {
+  const db = makeDb();
+  insertTask(db);
+  db.prepare("INSERT INTO archive_tasks SELECT '2026-10-01', * FROM tasks").run();
+  assert.equal(db.prepare('SELECT id FROM archive_tasks').get().id, 't1');
+  assert.throws(() => db.prepare("UPDATE archive_tasks SET description = 'x'").run(), /archive figée/);
+  assert.throws(() => db.prepare('DELETE FROM archive_tasks').run(), /archive figée/);
+  db.exec(SCHEMA);
+});

@@ -182,3 +182,36 @@ test('corriger sans rien changer : aucune entrée au journal', async () => {
   const op = ok(await call('logBlock', { id: 'b1', project: 'Fluffy', hours: 8, note: 'x' })).undo.opId;
   assert.equal(ok(await call('editEntry', { id: 'b1', hours: 8, note: 'x', project: 'Fluffy' })).undo.opId, op);
 });
+
+// Journal généralisé : tâches et réglages s'annulent comme les entrées.
+test('annuler une écriture de tâche et de réglages : tâche supprimée, réglage rétabli, réglage neuf retiré', async () => {
+  const { commit, change } = await import('../server/core.js');
+  const { call, sqlite, env, clock } = await makeEnv();
+  const task = {
+    id: 't1', description: 'Rigger', project: 'Fluffy', type: 'Misc', position: 1, done_day: null, started_ms: null,
+    done_ms: null, source: 'app', created_ms: clock.now(), touched_ms: clock.now(), deleted_ms: null,
+  };
+  const ctx = { db: env.db, now: clock.now(), agent: false, offline: false };
+  await commit(ctx, 'test', 'Écritures mêlées', [
+    change(null, task, 'tasks'),
+    change({ key: 'me', value: 'Amohs' }, { key: 'me', value: 'Autre' }, 'settings'),
+    change(null, { key: 'neuf', value: '1' }, 'settings'),
+  ]);
+  assert.equal(sqlite.prepare("SELECT value FROM settings WHERE key = 'me'").get().value, 'Autre');
+  ok(await undo(call));
+  assert.ok(sqlite.prepare('SELECT * FROM tasks WHERE id = ?').get('t1').deleted_ms, 'tâche marquée supprimée');
+  assert.equal(sqlite.prepare("SELECT value FROM settings WHERE key = 'me'").get().value, 'Amohs');
+  assert.equal(sqlite.prepare("SELECT * FROM settings WHERE key = 'neuf'").get(), undefined);
+});
+
+test('annuler refusé si la tâche a changé entre-temps', async () => {
+  const { commit, change } = await import('../server/core.js');
+  const { call, sqlite, env, clock } = await makeEnv();
+  const task = {
+    id: 't1', description: 'Rigger', project: 'Fluffy', type: 'Misc', position: 1, done_day: null, started_ms: null,
+    done_ms: null, source: 'app', created_ms: clock.now(), touched_ms: clock.now(), deleted_ms: null,
+  };
+  await commit({ db: env.db, now: clock.now(), agent: false, offline: false }, 'test', 'Tâche', [change(null, task, 'tasks')]);
+  sqlite.prepare("UPDATE tasks SET description = 'Autre' WHERE id = 't1'").run();
+  fails(await undo(call), 'invalid', /a changé depuis/);
+});

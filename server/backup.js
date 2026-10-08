@@ -14,6 +14,11 @@ const ENTRY_COLUMNS = {
   type: 'text', note: 'text', source: 'text', created_ms: 'int', touched_ms: 'int', deleted_ms: 'int',
 };
 
+const TASK_COLUMNS = {
+  id: 'text', description: 'text', project: 'text', type: 'text', position: 'int', done_day: 'text', started_ms: 'int',
+  done_ms: 'int', source: 'text', created_ms: 'int', touched_ms: 'int', deleted_ms: 'int',
+};
+
 // Toutes les tables de server/schema.sql sauf NOT_EXPORTED, colonnes dans l'ordre du schéma (testé).
 export const TABLES = [
   { name: 'projects', columns: { name: 'text', position: 'int' } },
@@ -22,6 +27,8 @@ export const TABLES = [
   { name: 'ops', columns: { id: 'int', at_ms: 'int', action: 'text', summary: 'text', source: 'text', changes: 'text', undone_ms: 'int' } },
   { name: 'archive_days', columns: { day: 'text', archived_ms: 'int', row_count: 'int', hours: 'real' } },
   { name: 'archive_entries', columns: { archived_day: 'text', ...ENTRY_COLUMNS } },
+  { name: 'tasks', columns: TASK_COLUMNS },
+  { name: 'archive_tasks', columns: { archived_day: 'text', ...TASK_COLUMNS } },
 ];
 
 // Codes refusés par adresse : sans valeur à garder.
