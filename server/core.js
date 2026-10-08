@@ -7,7 +7,7 @@
  * Chaque écriture enregistre ses changements de lignes et une entrée du journal `ops` dans la même
  * transaction : c'est ce qui permet d'annuler (action `undo`).
  */
-import { dayKey, dayStart, nextDayStart, clock, shortDate, previousDayKey, workDayKey, workDayEnd } from './tz.js';
+import { dayKey, dayStart, nextDayStart, clock, shortDate, previousDayKey, workDayKey, workDayEnd, localTime } from './tz.js';
 import { TABLES, fingerprintSql } from './backup.js';
 
 export const BLOCK_HOURS = [2, 4, 6, 8, 10, 12];
@@ -19,9 +19,11 @@ const FORBIDDEN_NAME = /[\[\]*?\/\\:]/;
 // sauf tabulation et retours à la ligne dans les notes.
 const CONTROL_IN_NOTE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
 const CONTROL_IN_NAME = /[\u0000-\u001F\u007F]/;
+const CONTROL_IN_TASK = /[\u0000-\u001F\u007F]/;
 const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
 const TOO_LONG = 'Une session ne peut pas dépasser 24 h : indique d’abord l’heure de fin du compteur en cours.';
-const WRITE_ACTIONS = ['start', 'stop', 'note', 'logBlock', 'logSession', 'addProject', 'deleteEntry', 'editEntry', 'undo', 'select'];
+const WRITE_ACTIONS = ['start', 'stop', 'note', 'logBlock', 'logSession', 'addProject', 'deleteEntry', 'editEntry', 'undo', 'select',
+  'addTask', 'editTask', 'deleteTask', 'moveTask', 'checkTask', 'uncheckTask'];
 
 // Sauvegardes. Un appel de Worker a droit à 50 requêtes D1 sur l'offre gratuite (chaque instruction
 // d'un batch compte) : figer un jour en coûte 2, d'où 20 jours au plus par appel.
@@ -174,6 +176,23 @@ export async function switchTo(ctx, run, project, type, at) {
   ];
 }
 
+// À faire (dans l'ordre de la liste), puis faites depuis le dernier 6 h (dans l'ordre des coches).
+// Une tâche cochée avant ce 6 h reste en base mais n'est plus renvoyée.
+async function todoTasks(db) {
+  return db.all('SELECT * FROM tasks WHERE deleted_ms IS NULL AND done_ms IS NULL ORDER BY position, created_ms');
+}
+async function listTasks(db, nowMs) {
+  const since = localTime(workDayKey(nowMs), 6);
+  const [todo, done] = await Promise.all([
+    todoTasks(db),
+    db.all('SELECT * FROM tasks WHERE deleted_ms IS NULL AND done_ms >= ? ORDER BY done_ms', [since]),
+  ]);
+  return [...todo, ...done].map((r) => ({
+    id: r.id, description: r.description, project: r.project, type: typeOf(r), position: r.position,
+    done: iso(r.done_ms), started: iso(r.started_ms),
+  }));
+}
+
 async function status(ctx) {
   const { db } = ctx;
   const run = await running(db);
@@ -191,6 +210,7 @@ async function status(ctx) {
     running: toApi(run),
     last: toApi(lastRow),
     choice: await readChoice(db, cfg, run, lastRow, projects),
+    tasks: await listTasks(db, ctx.now),
     types: TYPES,
     today: todayRows.map(toApi),
     undo: undo ? { opId: undo.id, summary: undo.summary } : null,
@@ -377,6 +397,53 @@ export async function freezeDays({ db, now }) {
   return { frozen, through: next };
 }
 
+// ---- Tâches : validation et règle de la tâche du haut ----
+
+function cleanDescription(value) {
+  if (typeof value !== 'string') fail('La description doit être du texte.');
+  const text = value.trim();
+  if (!text) fail('Description vide.');
+  if (text.length > 200) fail('Description trop longue (200 caractères max).');
+  if (CONTROL_IN_TASK.test(text)) fail('La description contient un caractère de contrôle interdit.');
+  return text;
+}
+function requireTaskType(value, fallback) {
+  const type = requireType(value, fallback);
+  if (type === PAUSE) fail('Une tâche ne peut pas avoir l’activité Pause.');
+  return type;
+}
+async function requireLiveTask(ctx, p) {
+  const id = requireId(p);
+  const row = await ctx.db.first('SELECT * FROM tasks WHERE id = ?', [id]);
+  if (!row || row.deleted_ms != null) fail('Tâche introuvable.');
+  return row;
+}
+
+function topTask(list) {
+  return list.reduce((best, t) => (!best || t.position < best.position || (t.position === best.position && t.created_ms < best.created_ms) ? t : best), null);
+}
+
+// Applique `taskChanges` et, si la tâche du haut (première à faire) change — autre tâche, ou même
+// tâche avec un autre projet ou une autre activité —, son projet et son activité deviennent le choix
+// et le compteur en marche bascule à l'instant de l'action. Tout dans une seule entrée de journal.
+async function withTopRule(ctx, action, summary, taskChanges) {
+  const todo = await todoTasks(ctx.db);
+  const afterById = new Map(todo.map((t) => [t.id, t]));
+  for (const c of taskChanges) {
+    if (c.after && c.after.deleted_ms == null && c.after.done_ms == null) afterById.set(c.key, c.after);
+    else afterById.delete(c.key);
+  }
+  const before = topTask(todo);
+  const after = topTask([...afterById.values()]);
+  const changes = [...taskChanges];
+  if (after && (!before || before.id !== after.id || before.project !== after.project || before.type !== after.type)) {
+    const type = canonicalType(after.type);
+    changes.push(...choiceChanges(await settings(ctx.db), after.project, type));
+    changes.push(...(await switchTo(ctx, await running(ctx.db), after.project, type, actionTime(ctx))));
+  }
+  await commit(ctx, action, summary, changes);
+}
+
 // ---- Actions ----
 
 export const actions = {
@@ -533,6 +600,85 @@ export const actions = {
     if (['project', 'type', 'note', 'hours', 'start_ms', 'end_ms', 'day'].every((f) => next[f] === row[f])) return;
     next.touched_ms = ctx.now;
     await commit(ctx, 'editEntry', `Correction ${describe(next)}`, [change(row, next)]);
+  },
+
+  // ---- Tâches ----
+
+  async addTask(ctx, p) {
+    const id = requireId(p);
+    const description = cleanDescription(p.description);
+    const { db } = ctx;
+    const [cfg, projects, lastRow, run] = await Promise.all([settings(db), projectNames(db), last(db), running(db)]);
+    const current = await readChoice(db, cfg, run, lastRow, projects);
+    const project = await requireProject(ctx, p.project === undefined || p.project === null ? current.project : p.project);
+    const type = requireTaskType(p.type, current.type);
+    if (await db.first('SELECT id FROM tasks WHERE id = ?', [id])) return;
+    const { position } = await db.first('SELECT COALESCE(MAX(position), 0) + 1 AS position FROM tasks WHERE deleted_ms IS NULL AND done_ms IS NULL');
+    const task = {
+      id, description, project, type, position, done_day: null, started_ms: null, done_ms: null,
+      source: source(ctx), created_ms: ctx.now, touched_ms: ctx.now, deleted_ms: null,
+    };
+    await withTopRule(ctx, 'addTask', `Tâche ajoutée : ${description}`, [change(null, task, 'tasks')]);
+  },
+
+  async editTask(ctx, p) {
+    const row = await requireLiveTask(ctx, p);
+    const next = { ...row };
+    if (p.description !== undefined) next.description = cleanDescription(p.description);
+    if (p.project !== undefined) next.project = await requireProject(ctx, p.project);
+    if (p.type !== undefined) next.type = requireTaskType(p.type, row.type);
+    if (['description', 'project', 'type'].every((f) => next[f] === row[f])) return;
+    next.touched_ms = ctx.now;
+    await withTopRule(ctx, 'editTask', `Tâche modifiée : ${next.description}`, [change(row, next, 'tasks')]);
+  },
+
+  async deleteTask(ctx, p) {
+    const id = requireId(p);
+    const row = await ctx.db.first('SELECT * FROM tasks WHERE id = ?', [id]);
+    if (!row) fail('Tâche introuvable.');
+    if (row.deleted_ms != null) return;
+    await withTopRule(ctx, 'deleteTask', `Tâche supprimée : ${row.description}`, [change(row, { ...row, deleted_ms: ctx.now, touched_ms: ctx.now }, 'tasks')]);
+  },
+
+  async moveTask(ctx, p) {
+    const row = await requireLiveTask(ctx, p);
+    if (row.done_ms != null) fail('Cette tâche est déjà cochée : elle n’est plus dans la liste.');
+    const before = p.before === undefined ? null : p.before;
+    if (before !== null && (typeof before !== 'string' || before === row.id)) fail('Position de destination non valide.');
+    const others = (await todoTasks(ctx.db)).filter((t) => t.id !== row.id);
+    let index = others.length;
+    if (before !== null) {
+      index = others.findIndex((t) => t.id === before);
+      if (index < 0) fail('Position de destination non valide.');
+    }
+    const order = [...others.slice(0, index), row, ...others.slice(index)];
+    const changes = [];
+    order.forEach((t, i) => {
+      if (t.position !== i + 1) changes.push(change(t, { ...t, position: i + 1, touched_ms: ctx.now }, 'tasks'));
+    });
+    if (!changes.length) return;
+    await withTopRule(ctx, 'moveTask', `Tâche déplacée : ${row.description}`, changes);
+  },
+
+  async checkTask(ctx, p) {
+    const row = await requireLiveTask(ctx, p);
+    if (row.done_ms != null) return;
+    const doneMs = actionTime(ctx);
+    const doneDay = workDayKey(doneMs);
+    const previous = await ctx.db.first(
+      'SELECT MAX(done_ms) AS m FROM tasks WHERE deleted_ms IS NULL AND id <> ? AND done_day = ? AND done_ms <= ?',
+      [row.id, doneDay, doneMs],
+    );
+    const startedMs = previous && previous.m != null ? previous.m : localTime(doneDay, 6);
+    const next = { ...row, done_ms: doneMs, done_day: doneDay, started_ms: startedMs, touched_ms: ctx.now };
+    await withTopRule(ctx, 'checkTask', `Tâche cochée : ${row.description}`, [change(row, next, 'tasks')]);
+  },
+
+  async uncheckTask(ctx, p) {
+    const row = await requireLiveTask(ctx, p);
+    if (row.done_ms == null) return;
+    const next = { ...row, done_ms: null, done_day: null, started_ms: null, touched_ms: ctx.now };
+    await withTopRule(ctx, 'uncheckTask', `Tâche décochée : ${row.description}`, [change(row, next, 'tasks')]);
   },
 
   // Annule l'action opId, si c'est la dernière non annulée. Les changements sont défaits dans l'ordre
