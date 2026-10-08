@@ -77,7 +77,7 @@ button { cursor: pointer; border: 0; background: none; padding: 0; }
   align-items: center;
   gap: 6px;
 }
-.hero .grid { width: 100%; margin-top: 8px; }
+.hero .picker { margin-top: 8px; }
 /* Au repos : 0:00:00 grisé, pour voir d'un coup d'œil que rien ne tourne. */
 .hero.idle { padding-bottom: 16px; }
 .hero.idle .hero-project { color: var(--muted); }
@@ -117,8 +117,7 @@ button { cursor: pointer; border: 0; background: none; padding: 0; }
 .row { flex-wrap: nowrap; }
 .dlg .row { flex-wrap: wrap; }
 
-/* Projets */
-.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* Projets (fenêtres : liste de choix) */
 .proj {
   min-height: 64px;
   padding: 8px 10px;
@@ -131,21 +130,43 @@ button { cursor: pointer; border: 0; background: none; padding: 0; }
 }
 .proj.on { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
 .proj.more { color: var(--muted); font-weight: 500; }
-/* Boutons de lancement : ▶, vert « lancer » (ni criard ni sombre). Le projet en cours est cerclé. */
-.proj.play {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  background: var(--go);
-  border-color: var(--go);
-  color: #fff;
+/* Tâche du haut : au-dessus du compteur. ☐ coche, le reste ouvre le panneau Tâches. */
+.toptask { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--radius); background: var(--card); border: 1px solid var(--line); cursor: pointer; }
+.check { flex: none; width: 28px; height: 28px; border-radius: 8px; border: 2px solid var(--muted); background: none; }
+.check:hover { border-color: var(--fg); }
+.tt-main { flex: 1; min-width: 0; display: flex; flex-direction: column; text-align: left; }
+.tt-desc { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tt-main small { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tt-chev { flex: none; font-size: 26px; line-height: 1; color: var(--muted); }
+.tasks-link { align-self: center; }
+
+/* Sélecteur de projet : petits boutons à contour clair ; le choisi est plein (couleur du texte
+   en fond, fond en texte : blanc sur sombre en thème sombre, sombre sur blanc en thème clair). */
+.picker { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; width: 100%; }
+.pick {
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--line);
+  background: none;
+  color: var(--fg);
+  font-weight: 600;
+  font-size: 16px;
+  overflow-wrap: anywhere;
 }
-.proj.play .proj-icon { font-size: 16px; }
-.proj.play.on { box-shadow: 0 0 0 3px var(--card), 0 0 0 5px var(--go); }
-.proj.play.more { color: #fff; font-weight: 600; }
-.proj.play small { flex-basis: 100%; font-size: 12px; font-weight: 500; opacity: .85; margin-top: -4px; }
+.pick.on { background: var(--fg); border-color: var(--fg); color: var(--bg); }
+.pick.more:not(.on) { color: var(--muted); font-weight: 500; }
+.launch {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%;
+  min-height: 60px;
+  border-radius: 14px;
+  background: var(--go);
+  color: #fff;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
 
 /* Sections */
 .block { display: flex; flex-direction: column; gap: 8px; }
@@ -274,9 +295,14 @@ html.mini .hero { padding: 10px 10px 8px; gap: 4px; }
 html.mini .hero-project { font-size: 14px; }
 html.mini .hero-time { font-size: 40px; }
 html.mini .stop { min-height: 40px; font-size: 16px; margin-top: 2px; }
-html.mini .hero .grid { gap: 6px; margin-top: 4px; }
+html.mini .hero .picker { gap: 5px; margin-top: 4px; }
 html.mini .proj { min-height: 42px; font-size: 15px; padding: 4px 8px; }
-html.mini .proj.play small { font-size: 11px; }
+html.mini .pick { min-height: 30px; font-size: 13px; padding: 0 10px; }
+html.mini .launch { min-height: 40px; font-size: 16px; }
+html.mini .toptask { padding: 6px 8px; gap: 8px; }
+html.mini .tt-desc { font-size: 14px; }
+html.mini .tt-main small { font-size: 11px; }
+html.mini .check { width: 24px; height: 24px; }
 html.mini .types { gap: 5px; }
 html.mini .type { min-height: 32px; font-size: 12px; border-radius: 9px; }
 html.mini .block-title { font-size: 11px; margin-top: 0; }

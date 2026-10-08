@@ -101,6 +101,11 @@ async function main() {
   const page = await connect(await startChrome(9333));
   const base = `http://localhost:${P}`;
   const me = { code: 'code-amohs' };
+  // Parcours d'un lancement : choisir le projet, puis ▶ (les boutons de projet ne lancent plus).
+  const launchOn = async (project) => {
+    await page.click(`[data-act="selectProject"][data-p="${project}"]`);
+    await page.click('[data-act="launch"]');
+  };
 
   console.log('Connexion');
   await page.send('Page.navigate', { url: base + '/' });
@@ -111,16 +116,28 @@ async function main() {
   await page.evaluate('document.getElementById("code").value = "code-amohs"; document.getElementById("login-form").requestSubmit()');
   await page.waitFor('document.querySelector(".hero")', 'écran principal');
   await page.shot('01-accueil');
+  check(await page.evaluate('!!document.querySelector(".tasks-link") && /Tâches/.test(document.querySelector(".tasks-link").textContent)'), 'sans tâche : lien « + Tâches »');
+  check(await page.evaluate('!!document.querySelector("[data-act=launch]") && document.querySelectorAll(".picker .pick").length >= 3'), 'à l’arrêt : sélecteur de projets et gros bouton LANCER');
+  check(await page.evaluate('[...document.querySelectorAll(".block-title")].some((h) => h.textContent === "Activité")'), 'la rangée s’appelle « Activité »');
+  await page.click('[data-act="openTasks"]');
+  await page.waitFor('document.querySelector("dialog[open] h2") && document.querySelector("dialog[open] h2").textContent === "Tâches"', 'panneau Tâches (provisoire)');
+  await page.click('dialog [data-act="close"]');
 
   console.log('Lancement, bascule, stop');
-  await page.click('[data-act="start"][data-p="Fluffy"]');
+  await page.click('[data-act="selectProject"][data-p="Fluffy"]');
+  await page.waitFor('document.querySelector(".sync-ok")', 'synchro');
+  let s = await api(P, { ...me, action: 'status' });
+  check(s.choice?.project === 'Fluffy' && s.running === null, 'serveur : choisir un projet ne lance rien');
+  await page.click('[data-act="launch"]');
   check(await page.evaluate('document.querySelector(".hero-project").textContent.split(" · ")[0]') === 'Fluffy', 'le compteur s’affiche tout de suite');
   await page.waitFor('document.querySelector(".sync-ok")', 'synchro');
-  check((await api(P, { ...me, action: 'status' })).running?.project === 'Fluffy', 'serveur : Fluffy en cours');
-  await page.click('[data-act="start"][data-p="Jam"]');
+  s = await api(P, { ...me, action: 'status' });
+  check(s.running?.project === 'Fluffy' && s.choice?.project === 'Fluffy', 'serveur : Fluffy en cours, c’est le choix');
+  await page.click('[data-act="selectProject"][data-p="Jam"]');
   await page.waitFor('document.querySelector(".sync-ok") && document.querySelector(".hero-project").textContent.startsWith("Jam · ")', 'bascule');
-  let s = await api(P, { ...me, action: 'status' });
-  check(s.running?.project === 'Jam' && s.last?.project === 'Fluffy', 'serveur : bascule Fluffy → Jam');
+  s = await api(P, { ...me, action: 'status' });
+  check(s.running?.project === 'Jam' && s.last?.project === 'Fluffy' && s.choice?.project === 'Jam', 'serveur : toucher un projet en marche bascule Fluffy → Jam');
+  check(await page.evaluate('document.querySelector(".pick.on").textContent') === 'Jam', 'le projet choisi est plein');
   await page.shot('02-compteur');
   await page.click('[data-act="stop"]');
   await page.waitFor('document.querySelector(".hero.idle") && document.querySelector(".sync-ok")', 'arrêt');
@@ -128,7 +145,11 @@ async function main() {
 
   console.log('Types, total du jour, récap');
   await page.click('[data-act="type"][data-t="Dev"]');
-  await page.click('[data-act="start"][data-p="Fluffy"]');
+  await page.click('[data-act="selectProject"][data-p="Fluffy"]');
+  await page.waitFor('document.querySelector(".sync-ok")', 'synchro du choix');
+  s = await api(P, { ...me, action: 'status' });
+  check(s.running === null && s.choice?.project === 'Fluffy' && s.choice?.type === 'Dev', 'serveur : le choix (Fluffy · Dev) sans compteur');
+  await page.click('[data-act="launch"]');
   await page.waitFor('document.querySelector(".sync-ok") && /Dev/.test(document.querySelector(".hero-project").textContent)', 'lancement en Dev');
   await page.click('[data-act="type"][data-t="Art"]');
   await page.waitFor('document.querySelector(".sync-ok") && /Art/.test(document.querySelector(".hero-project").textContent)', 'bascule en Art');
@@ -139,7 +160,8 @@ async function main() {
   await page.waitFor('document.querySelector(".sync-ok") && document.querySelector(".hero.paused") && document.querySelector("[data-act=resume]")', 'pause');
   s = await api(P, { ...me, action: 'status' });
   check(s.running?.type === 'Pause' && s.running?.project === 'Fluffy' && s.last?.type === 'Art', 'serveur : la pause est un morceau Pause, le compteur continue');
-  check(!(await page.evaluate('!!document.querySelector("[data-act=type][data-t=Pause]")')), 'la pause n’est pas une tâche à choisir');
+  check(s.choice?.type === 'Art', 'serveur : la pause ne touche pas le choix (Art)');
+  check(!(await page.evaluate('!!document.querySelector("[data-act=type][data-t=Pause]")')), 'la pause n’est pas une activité à choisir');
   check(/^Pause \d+:\d\d:\d\d$/.test(await page.evaluate('document.getElementById("session-pause").textContent')), 'le cumul des pauses s’affiche sous le compteur');
   check(await page.evaluate('(() => { const b = [...document.querySelectorAll(".hero-actions button")].map((x) => x.dataset.act); return b[0] === "resume" && b[1] === "stop"; })()'), 'Reprendre au-dessus de STOP');
   await page.evaluate('document.getElementById("timeline").innerHTML = ""');
@@ -149,7 +171,7 @@ async function main() {
   await page.shot('02a-pause');
   await page.click('[data-act="resume"]');
   await page.waitFor('document.querySelector(".sync-ok") && !document.querySelector(".hero.paused") && /Art/.test(document.querySelector(".hero-project").textContent)', 'reprise');
-  check((await api(P, { ...me, action: 'status' })).running?.type === 'Art', 'serveur : reprise sur la tâche d’avant');
+  check((await api(P, { ...me, action: 'status' })).running?.type === 'Art', 'serveur : reprise sur le choix d’avant');
   await page.click('[data-act="recap"]');
   await page.waitFor('document.querySelector("dialog .recap .bars")', 'récap semaine');
   await page.shot('02b-recap');
@@ -158,16 +180,16 @@ async function main() {
   await page.click('dialog [data-act="close"]');
   await page.click('[data-act="menu"]');
   await page.click('dialog [data-act="toggleStudio"]');
-  await page.waitFor('document.querySelector("[data-act=start][data-p=Studio]")', 'Studio affiché par le réglage');
+  await page.waitFor('document.querySelector("[data-act=selectProject][data-p=Studio]")', 'Studio affiché par le réglage');
   // Réglage remis : avec Studio affiché, Proto et Jam passeraient dans « Plus… » pour la suite du test.
   await page.click('[data-act="menu"]');
   await page.click('dialog [data-act="toggleStudio"]');
-  await page.waitFor('!document.querySelector("[data-act=start][data-p=Studio]")', 'Studio masqué à nouveau');
+  await page.waitFor('!document.querySelector("[data-act=selectProject][data-p=Studio]")', 'Studio masqué à nouveau');
   await page.click('[data-act="stop"]');
   await page.waitFor('document.querySelector(".hero.idle") && document.querySelector(".sync-ok")', 'arrêt');
 
   console.log('Note');
-  await page.click('[data-act="start"][data-p="Proto"]');
+  await launchOn('Proto');
   await page.click('[data-act="note"]');
   await page.waitFor('document.getElementById("note-text")', 'fenêtre de note');
   await page.evaluate('document.getElementById("note-text").value = "écran titre"');
@@ -182,7 +204,7 @@ async function main() {
 
   console.log('Fenêtre des sessions');
   const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
-  await page.click('[data-act="start"][data-p="Proto"]');
+  await launchOn('Proto');
   await page.waitFor('document.querySelector(".sync-ok") && document.querySelector(".hero-project").textContent.startsWith("Proto · ")', 'lancement Proto');
   await page.click('[data-act="stop"]');
   await page.waitFor('document.querySelector(".hero.idle") && document.querySelector(".sync-ok")', 'arrêt');
@@ -239,12 +261,33 @@ async function main() {
   const yesterday = new Date(Date.now() - 86400000).toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
   check(s.last?.project === 'Proto' && s.last?.hours === 4 && s.last?.date === yesterday, 'serveur : 4 h sur Proto hier');
 
+  console.log('Tâche du haut');
+  await api(P, { ...me, action: 'addTask', id: 'e2e-a', description: 'Répondre aux mails éditeur', project: 'Proto', type: 'Social' });
+  await api(P, { ...me, action: 'addTask', id: 'e2e-b', description: 'Prototype du dash', project: 'Heirfall', type: 'Art' });
+  await page.send('Page.navigate', { url: base + '/' });
+  await page.waitFor('document.querySelector(".toptask") && document.querySelector(".sync-ok")', 'tâche du haut affichée');
+  const topText = await page.evaluate('document.querySelector(".toptask").textContent');
+  check(/Répondre aux mails éditeur/.test(topText) && /Proto · Social/.test(topText), 'la tâche du haut : description et « projet · activité »');
+  check(await page.evaluate('document.querySelector(".pick.on").textContent') === 'Proto' && await page.evaluate('document.querySelector(".type.on").textContent') === 'Social', 'le choix suit la tâche du haut (Proto · Social)');
+  await page.shot('01a-accueil-tache');
+  await page.click('.toptask .tt-main');
+  await page.waitFor('document.querySelector("dialog[open] h2")', 'appui sur la ligne : panneau Tâches');
+  await page.click('dialog [data-act="close"]');
+  await page.click('[data-act="checkTop"]');
+  await page.waitFor('document.querySelector(".sync-ok") && /Prototype du dash/.test(document.querySelector(".toptask").textContent)', 'la suivante monte');
+  s = await api(P, { ...me, action: 'status' });
+  check(s.tasks.find((t) => t.id === 'e2e-a')?.done && s.choice?.project === 'Heirfall' && s.choice?.type === 'Art', 'serveur : tâche cochée, le choix passe sur la suivante');
+  check(await page.evaluate('document.querySelector(".pick.on").textContent') === 'Heirfall', 'le sélecteur suit la nouvelle tâche du haut');
+  await page.click('[data-act="checkTop"]');
+  await page.waitFor('document.querySelector(".sync-ok") && document.querySelector(".tasks-link")', 'plus de tâche : lien « + Tâches »');
+  check(/2 faites/.test(await page.evaluate('document.querySelector(".tasks-link").textContent')), 'le lien dit combien sont faites aujourd’hui');
+
   console.log('Hors ligne');
   await page.send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
-  await page.click('[data-act="start"][data-p="Heirfall"]');
-  check(await page.evaluate('document.querySelector(".hero-project").textContent.split(" · ")[0]') === 'Heirfall', 'hors ligne : le compteur s’affiche quand même');
+  await launchOn('Jam');
+  check(await page.evaluate('document.querySelector(".hero-project").textContent.split(" · ")[0]') === 'Jam', 'hors ligne : le compteur s’affiche quand même');
   await page.waitFor('document.querySelector(".sync-pending")', 'indicateur en attente');
-  check(JSON.parse(await page.evaluate('localStorage.getItem("kt.queue")')).length === 1, 'hors ligne : action gardée en file');
+  check(JSON.parse(await page.evaluate('localStorage.getItem("kt.queue")')).length === 2, 'hors ligne : choix et lancement gardés en file');
   check((await api(P, { ...me, action: 'status' })).running === null, 'serveur : rien reçu pendant la coupure');
   await page.shot('05-hors-ligne');
   await sleep(1500);
@@ -252,7 +295,7 @@ async function main() {
   await page.evaluate('window.dispatchEvent(new Event("online"))');
   await page.waitFor('document.querySelector(".sync-ok")', 'resynchro', 8000);
   s = await api(P, { ...me, action: 'status' });
-  check(s.running?.project === 'Heirfall' && s.running?.source === 'hors ligne', 'serveur : action rejouée, marquée hors ligne');
+  check(s.running?.project === 'Jam' && s.running?.source === 'hors ligne', 'serveur : action rejouée, marquée hors ligne');
   check(Date.now() - new Date(s.running.start).getTime() >= 1500, 'serveur : l’heure du tap fait foi');
   await page.click('[data-act="stop"]');
   await page.waitFor('document.querySelector(".hero.idle") && document.querySelector(".sync-ok")', 'arrêt');
@@ -265,7 +308,8 @@ async function main() {
   await page.waitFor('document.querySelector(".sync-ok") && document.querySelector("[data-act=more]")', 'projet ajouté');
   check((await api(P, { ...me, action: 'status' })).projects.includes('Game Jam 26'), 'serveur : projet créé');
   await page.click('[data-act="more"]');
-  await page.click('dialog [data-act="start"][data-p="Game Jam 26"]');
+  await page.click('dialog [data-act="selectProject"][data-p="Game Jam 26"]');
+  await page.click('[data-act="launch"]');
   await page.waitFor('document.querySelector(".sync-ok") && document.querySelector(".hero-project").textContent.startsWith("Game Jam 26 · ")', 'lancement depuis « Plus… »');
   await page.shot('06-plus');
 
@@ -287,7 +331,7 @@ async function main() {
   await page.waitFor('document.querySelector(".hero") && document.querySelector(".types")', 'compteur et tâches');
   // Visible = réellement dessiné (un parent masqué compte), pas seulement le style propre.
   const shown = (sel) => page.evaluate(`(() => { const el = document.querySelector(${JSON.stringify(sel)}); return !!el && el.getClientRects().length > 0; })()`);
-  check(await shown('.hero') && await shown('.types'), 'mini : compteur, projets et tâches affichés');
+  check(await shown('.hero') && await shown('.types') && await shown('.picker') && await shown('[data-act=launch]'), 'mini : compteur, sélecteur, LANCER et activités affichés');
   check(!(await shown('.today')) && !(await shown('.blocks')), 'mini : journée et blocs masqués');
   check(await page.evaluate('document.documentElement.scrollWidth <= 300'), 'mini : rien ne dépasse en largeur');
   check(await page.evaluate('/Plus d.infos/.test((document.querySelector("[data-act=moreInfo]") || {}).textContent || "")'), 'mini : bouton « Plus d’infos »');

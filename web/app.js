@@ -16,7 +16,7 @@
   var POLL_MS = 20000;    // relecture de l'état quand la page est visible (compteur lancé ailleurs)
   var RETRY_MS = 30000;
   var BUSY_RETRY_MS = 5000;
-  var KEYS = { code: 'kt.code', status: 'kt.status', queue: 'kt.queue', type: 'kt.type', studio: 'kt.showStudio' };
+  var KEYS = { code: 'kt.code', status: 'kt.status', queue: 'kt.queue', studio: 'kt.showStudio' };
   // L'URL d'API doit avoir été renseignée dans config.js (le modèle contient « REMPLACER »).
   var CONFIGURED = typeof API === 'string' && /^(https?:\/\/|\/)/.test(API) && API.indexOf('REMPLACER') < 0;
   // Version compacte (?mini=1) pour la mini-fenêtre de bureau (dossier desktop/) : compteur, projets
@@ -48,7 +48,6 @@
     retryTimer: null,
     loginError: '',
     forgotOpen: false,
-    type: L.typeOf({ type: load(KEYS.type) }),
     showStudio: load(KEYS.studio) === '1',
     recap: null,
     sessions: null,    // fenêtre des sessions : { day, rows, error, open }
@@ -58,13 +57,10 @@
   function saveStatus() { save(KEYS.status, state.status ? JSON.stringify(state.status) : null); }
   function saveQueue() { save(KEYS.queue, JSON.stringify(state.queue)); }
 
-  // Type affiché : celui du compteur en cours, sinon le dernier choisi (utilisé au prochain lancement).
-  // En pause, c'est la tâche d'avant (celle de la reprise) qui reste choisie.
-  function currentType() {
-    var r = state.status && state.status.running;
-    return r && !L.isPause(r) ? L.typeOf(r) : state.type;
-  }
-  function setType(t) { state.type = t; save(KEYS.type, t); }
+  // Le choix (projet, activité) est celui du serveur, le même sur tous les appareils : en marche, c'est
+  // ce qui tourne ; arrêté ou en pause, c'est ce que lancera ▶ ou Reprendre.
+  function currentChoice() { return L.choiceOf(state.status); }
+  function currentType() { return currentChoice().type; }
 
   // ---- Réseau ----
 
@@ -239,7 +235,6 @@
 
   function setStatus(data) {
     state.status = data;
-    if (data && data.running && !L.isPause(data.running)) setType(L.typeOf(data.running));
     saveStatus();
     // Fenêtre des sessions seule : une relecture ne redessine pas la page pendant qu'une ligne est
     // en correction (la saisie serait perdue). Elle se redessine à la fermeture de la ligne.
@@ -313,9 +308,10 @@
       app.innerHTML = state.sessions ? '<section class="sessions-page">' + sessionsHtml() + '</section>' : '';
       return;
     }
-    // Haut en bas = ordre d'usage : ce qui tourne, choisir un type, lancer, la journée, après coup.
-    app.innerHTML = header(s) + backupBanner(s) + hero(s) +
-      section('Tâche', typeBar(s)) +
+    // Haut en bas = ordre d'usage : la tâche du haut, ce qui tourne, choisir un projet, lancer, l'activité,
+    // la journée, après coup.
+    app.innerHTML = header(s) + backupBanner(s) + topTaskLine(s) + hero(s) +
+      section('Activité', typeBar(s)) +
       section('Ajouter un bloc d’heures', blocks(), 'add') +
       todayView(s);
     tick();
@@ -370,7 +366,8 @@
       return '<section class="hero idle">' +
         '<div class="hero-project">Rien en cours</div>' +
         '<div class="hero-time">' + workedText(s) + '</div>' +
-        grid(s) +
+        picker(s) +
+        '<div class="hero-actions"><button class="launch" data-act="launch">' + ICON.play + 'LANCER</button></div>' +
         '</section>';
     }
     var paused = L.isPause(r);
@@ -388,8 +385,8 @@
       '<div class="hero-time" id="elapsed">' + workedText(s) + '</div>' +
       '<div class="hero-pause" id="session-time">' + sessionTimeText(session) + '</div>' +
       '<div class="hero-pause" id="session-pause">' + sessionPauseText(session) + '</div>' +
+      picker(s) +
       '<div class="hero-actions">' + actions + '</div>' +
-      grid(s) +
       '<button class="link note-text" data-act="note">' + (r.note ? esc(r.note) : '+ note') + '</button>' +
       '</section>';
   }
@@ -448,23 +445,34 @@
     return html;
   }
 
-  // Les projets sont les boutons qui lancent le compteur : ▶, vert « lancer ».
-  function projectButton(s, p) {
-    var on = s.running && s.running.project === p;
-    return '<button class="proj play' + (on ? ' on' : '') + '" style="--go:' + L.projectColor(p) + '" data-act="start" data-p="' + esc(p) + '">' +
-      '<span class="proj-icon">' + (on ? '●' : '▶') + '</span><span class="proj-name">' + esc(p) + '</span>' +
-      (on ? '<small>en cours</small>' : '') + '</button>';
+  // La tâche du haut de la liste, au-dessus du compteur : ☐ la coche, un appui ailleurs ouvre le panneau
+  // Tâches. Sans tâche à faire, un simple lien vers le panneau.
+  function topTaskLine(s) {
+    var t = L.topTask(s);
+    if (!t) {
+      var done = L.doneTasks(s, Date.now()).length;
+      return '<button class="link tasks-link" data-act="openTasks">+ Tâches' + (done ? ' · ' + done + (done > 1 ? ' faites' : ' faite') : '') + '</button>';
+    }
+    return '<div class="toptask" data-act="openTasks">' +
+      '<button class="check" data-act="checkTop" data-id="' + esc(t.id) + '" aria-label="Cocher la tâche"></button>' +
+      '<span class="tt-main"><span class="tt-desc">' + esc(t.description) + '</span>' +
+      '<small>' + esc(t.project) + ' · ' + esc(L.typeOf(t)) + '</small></span>' +
+      '<span class="tt-chev" aria-hidden="true">›</span></div>';
   }
 
-  function grid(s) {
+  // Le sélecteur : une ligne de petits boutons de projet. Toucher un projet change le choix (et
+  // bascule le compteur s'il tourne) ; c'est ▶ qui lance.
+  function picker(s) {
+    var chosen = currentChoice().project;
     var vp = L.visibleProjects(s, state.showStudio);
-    var html = vp.shown.map(function (p) { return projectButton(s, p); }).join('');
+    var html = vp.shown.map(function (p) {
+      return '<button class="pick' + (p === chosen ? ' on' : '') + '" data-act="selectProject" data-p="' + esc(p) + '">' + esc(p) + '</button>';
+    }).join('');
     if (vp.more.length) {
-      var hidden = s.running && vp.more.indexOf(s.running.project) >= 0;
-      html += '<button class="proj play more' + (hidden ? ' on' : '') + '" data-act="more">' +
-        (hidden ? '● ' + esc(s.running.project) : 'Plus…') + '</button>';
+      var hidden = vp.more.indexOf(chosen) >= 0;
+      html += '<button class="pick more' + (hidden ? ' on' : '') + '" data-act="more">' + (hidden ? esc(chosen) : 'Plus…') + '</button>';
     }
-    return '<div class="grid">' + html + '</div>';
+    return '<div class="picker">' + html + '</div>';
   }
 
   function blocks() {
@@ -558,20 +566,28 @@
   var handlers = {
     close: closeDialog,
 
+    // Activité : change le choix ; le serveur bascule le compteur s'il tourne (hors pause).
     type: function (el) {
-      var t = el.dataset.t;
-      var r = state.status.running;
-      setType(t);
-      if (r && L.typeOf(r) !== t) act('start', { id: uid(), project: r.project, type: t });
-      else render();
+      if (el.dataset.t !== currentType()) act('select', { type: el.dataset.t });
     },
 
-    start: function (el) {
-      var p = el.dataset.p;
+    selectProject: function (el) {
       closeDialog();
-      var r = state.status.running;
-      if (r && r.project === p) return;
-      act('start', { id: uid(), project: p, type: currentType() });
+      if (el.dataset.p !== currentChoice().project) act('select', { project: el.dataset.p });
+    },
+
+    // ▶ : lance le compteur sur le choix.
+    launch: function () {
+      var c = currentChoice();
+      act('start', { id: uid(), project: c.project, type: c.type });
+    },
+
+    openTasks: function () {
+      openDialog('<h2>Tâches</h2>' + cancelButton());
+    },
+
+    checkTop: function (el) {
+      act('checkTask', { id: el.dataset.id });
     },
 
     stop: function () { act('stop', {}); },
@@ -583,11 +599,14 @@
     },
     resume: function () {
       var r = state.status.running;
-      if (r && L.isPause(r)) act('start', { id: uid(), project: r.project, type: state.type });
+      if (r && L.isPause(r)) {
+        var c = currentChoice();
+        act('start', { id: uid(), project: c.project, type: c.type });
+      }
     },
 
     more: function () {
-      openDialog('<h2>Autres projets</h2>' + projectList(L.visibleProjects(state.status, state.showStudio).more, 'start') + cancelButton());
+      openDialog('<h2>Autres projets</h2>' + projectList(L.visibleProjects(state.status, state.showStudio).more, 'selectProject') + cancelButton());
     },
 
     note: function () {
