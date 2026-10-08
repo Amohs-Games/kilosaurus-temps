@@ -362,7 +362,7 @@
     return w.length ? '<div class="banner-warn" role="alert">' + w.map(esc).join('<br>') + '</div>' : '';
   }
 
-  // La carte compteur : toujours là, avec les projets qui le lancent. Au repos, 0:00:00 en grisé dit
+  // La carte compteur : toujours là, avec les projets qui le lancent. Au repos, le travail du jour en grisé dit
   // clairement que rien ne tourne.
   function hero(s) {
     var r = s.running;
@@ -406,7 +406,7 @@
   }
 
   function workedText(s) {
-    return L.elapsed(L.todayWorked(s.today, Date.now()) * 3600000);
+    return L.elapsed(Math.round(L.todayWorked(s.today, Date.now()) * 3600000));
   }
 
   function sessionTimeText(session) {
