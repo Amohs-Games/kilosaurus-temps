@@ -4,8 +4,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { makeEnv, ok } from './server-harness.mjs';
-import { runBackup, decodeBackup, backupName } from '../desktop/backup.mjs';
+import { DatabaseSync } from 'node:sqlite';
+import { makeEnv, ok, SCHEMA } from './server-harness.mjs';
+import { runBackup, decodeBackup, backupName, fetchBackup, encodeBackup } from '../desktop/backup.mjs';
+import { TABLES } from '../server/backup.js';
+import { freezeDays } from '../server/core.js';
+import { restoreSql } from '../tools/restore.mjs';
 
 const tmpDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kt-backup-'));
 
@@ -98,4 +102,27 @@ test('lecture : un fichier modifié est refusé', async () => {
   const doc = decodeBackup(fs.readFileSync(path.join(d, backupName('2026-10-01'))));
   doc.tables.entries[0].note = 'falsifié';
   assert.throws(() => decodeBackup(encodeBackup(doc)), /Empreinte différente pour la table entries/);
+});
+
+test('restauration : aller-retour identique, table par table', async () => {
+  const { api, call, clock, sqlite, env } = await setup();
+  ok(await call('addProject', { name: "L'Atelier 🦖" }));
+  ok(await call('logBlock', { id: 'b2', project: 'Fluffy', hours: 2, note: 'ligne 1\nligne 2 ; « guillemets »' }));
+  ok(await call('deleteEntry', { id: 'b2' }));
+  const s = ok(await call('status'));
+  ok(await call('undo', { opId: s.undo.opId }));
+  clock.set('2026-10-02T07:00:00+02:00');
+  await freezeDays({ db: env.db, now: clock.now() });
+  ok(await call('backupDone', { day: '2026-10-01' }));
+  // fetchBackup seul : runBackup écrirait encore `backup_desktop` après l'export, et la base
+  // d'origine ne serait plus celle qui a été copiée.
+  const doc = decodeBackup(encodeBackup(await fetchBackup(api, { page: 3, now: clock.now() })));
+  const fresh = new DatabaseSync(':memory:');
+  fresh.exec(SCHEMA);
+  fresh.exec(restoreSql(doc));
+  for (const t of TABLES) {
+    const cols = Object.keys(t.columns).join(', ');
+    const read = (db) => db.prepare(`SELECT ${cols} FROM ${t.name} ORDER BY rowid`).all().map((r) => ({ ...r }));
+    assert.deepEqual(read(fresh), read(sqlite), t.name);
+  }
 });

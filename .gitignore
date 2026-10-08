@@ -3,6 +3,8 @@
 # Fichiers de reprise de l'historique (données réelles).
 reprise*.sql
 reprise*.json
+# SQL de restauration d'une sauvegarde (données réelles).
+restore*.sql
 # Cache local de wrangler.
 .wrangler/
 ~$*
