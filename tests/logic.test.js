@@ -526,3 +526,31 @@ test('doneTasks avec nowMs : seulement les tâches faites depuis le dernier 6 h'
   // à 5 h du matin, le jour de travail est encore celui de la veille
   assert.deepEqual(L.doneTasks(s, Date.parse('2026-10-08T05:00:00+02:00')).map((t) => t.id), ['Y', 'T']);
 });
+
+test('uncheckTask : positions uniques, la décochée repasse en haut et bascule (comme le serveur)', () => {
+  let s = act(withTasks(), 'addTask', { id: 'A', description: 'A', project: 'Studio', type: 'Social' }, T0);
+  s = act(s, 'addTask', { id: 'B', description: 'B', project: 'Fluffy', type: 'Art' }, T0);
+  s = act(s, 'addTask', { id: 'C', description: 'C', project: 'Fluffy', type: 'Dev' }, T0);
+  s = act(s, 'checkTask', { id: 'A' }, T0);
+  s = act(s, 'start', { id: 'r1', project: 'Fluffy', type: 'Misc' }, T0);
+  s = act(s, 'moveTask', { id: 'C', before: 'B' }, T0);
+  s = act(s, 'uncheckTask', { id: 'A' }, T2);
+  assert.deepEqual(todoIds(s), ['A', 'C', 'B']);
+  assert.deepEqual(L.todoTasks(s).map((t) => t.position), [1, 2, 3]);
+  assert.equal(L.topTask(s).id, 'A');
+  assert.deepEqual(s.choice, { project: 'Studio', type: 'Social' });
+  assert.equal(s.running.project, 'Studio');
+  assert.equal(s.running.start, new Date(T2).toISOString());
+});
+
+test('liste limitée à 30 tâches à faire : addTask et uncheckTask sans effet au-delà', () => {
+  let s = act(withTasks(), 'addTask', { id: 'first', description: 'première' }, T0);
+  s = act(s, 'checkTask', { id: 'first' }, T0);
+  for (let i = 0; i < 30; i += 1) s = act(s, 'addTask', { id: 't' + i, description: 't' + i }, T0);
+  assert.equal(L.todoTasks(s).length, 30);
+  assert.equal(L.todoTasks(act(s, 'addTask', { id: 'extra', description: 'de trop' })).length, 30);
+  assert.equal(L.todoTasks(act(s, 'uncheckTask', { id: 'first' })).length, 30);
+  assert.ok(L.doneTasks(act(s, 'uncheckTask', { id: 'first' })).length === 1);
+  s = act(s, 'checkTask', { id: 't0' }, T1);
+  assert.equal(L.todoTasks(act(s, 'addTask', { id: 'extra', description: 'de trop' })).length, 30);
+});

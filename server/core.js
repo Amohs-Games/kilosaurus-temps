@@ -19,6 +19,7 @@ const FORBIDDEN_NAME = /[\[\]*?\/\\:]/;
 // sauf tabulation et retours à la ligne dans les notes.
 const CONTROL_IN_NOTE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
 const CONTROL_IN_NAME = /[\u0000-\u001F\u007F]/;
+const MAX_TODO = 30;
 const CONTROL_IN_TASK = /[\u0000-\u001F\u007F]/;
 const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
 const TOO_LONG = 'Une session ne peut pas dépasser 24 h : indique d’abord l’heure de fin du compteur en cours.';
@@ -180,7 +181,7 @@ export async function switchTo(ctx, run, project, type, at) {
 // À faire (dans l'ordre de la liste), puis faites depuis le dernier 6 h (dans l'ordre des coches).
 // Une tâche cochée avant ce 6 h reste en base mais n'est plus renvoyée.
 async function todoTasks(db) {
-  return db.all('SELECT * FROM tasks WHERE deleted_ms IS NULL AND done_ms IS NULL ORDER BY position, created_ms');
+  return db.all('SELECT * FROM tasks WHERE deleted_ms IS NULL AND done_ms IS NULL ORDER BY position, created_ms, id');
 }
 async function listTasks(db, nowMs) {
   const since = localTime(workDayKey(nowMs), 6);
@@ -197,8 +198,8 @@ async function listTasks(db, nowMs) {
 async function status(ctx) {
   const { db } = ctx;
   const run = await running(db);
-  const [cfg, projects, lastRow, todayRows, undo] = await Promise.all([
-    settings(db), projectNames(db), last(db), today(db, ctx.now, run), undoTarget(db),
+  const [cfg, projects, lastRow, todayRows, undo, tasks] = await Promise.all([
+    settings(db), projectNames(db), last(db), today(db, ctx.now, run), undoTarget(db), listTasks(db, ctx.now),
   ]);
   const backup = await backupState(db, cfg, ctx.now);
   return {
@@ -211,7 +212,7 @@ async function status(ctx) {
     running: toApi(run),
     last: toApi(lastRow),
     choice: await readChoice(db, cfg, run, lastRow, projects),
-    tasks: await listTasks(db, ctx.now),
+    tasks,
     types: TYPES,
     today: todayRows.map(toApi),
     undo: undo ? { opId: undo.id, summary: undo.summary } : null,
@@ -423,8 +424,15 @@ async function requireLiveTask(ctx, p) {
   return row;
 }
 
+// Refuse si la liste à faire est pleine ; renvoie la liste.
+async function requireRoom(db) {
+  const todo = await todoTasks(db);
+  if (todo.length >= MAX_TODO) fail(`Liste pleine : ${MAX_TODO} tâches à faire au plus.`);
+  return todo;
+}
+
 function topTask(list) {
-  return list.reduce((best, t) => (!best || t.position < best.position || (t.position === best.position && t.created_ms < best.created_ms) ? t : best), null);
+  return list.reduce((best, t) => (!best || t.position < best.position || (t.position === best.position && (t.created_ms < best.created_ms || (t.created_ms === best.created_ms && t.id < best.id))) ? t : best), null);
 }
 
 // Applique `taskChanges` et, si la tâche du haut (première à faire) change — autre tâche, ou même
@@ -617,6 +625,7 @@ export const actions = {
     const project = await requireProject(ctx, p.project === undefined || p.project === null ? current.project : p.project);
     const type = requireTaskType(p.type, current.type);
     if (await db.first('SELECT id FROM tasks WHERE id = ?', [id])) return;
+    await requireRoom(db);
     const { position } = await db.first('SELECT COALESCE(MAX(position), 0) + 1 AS position FROM tasks WHERE deleted_ms IS NULL AND done_ms IS NULL');
     const task = {
       id, description, project, type, position, done_day: null, started_ms: null, done_ms: null,
@@ -683,8 +692,15 @@ export const actions = {
   async uncheckTask(ctx, p) {
     const row = await requireLiveTask(ctx, p);
     if (row.done_ms == null) return;
+    const todo = await requireRoom(ctx.db);
+    // La tâche reprend sa position : les tâches à faire à cette position ou après descendent d'un cran,
+    // pour que les positions restent uniques (même ordre sur le serveur et à l'écran).
     const next = { ...row, done_ms: null, done_day: null, started_ms: null, touched_ms: ctx.now };
-    await withTopRule(ctx, 'uncheckTask', `Tâche décochée : ${row.description}`, [change(row, next, 'tasks')]);
+    const changes = [change(row, next, 'tasks')];
+    for (const t of todo) {
+      if (t.position >= row.position) changes.push(change(t, { ...t, position: t.position + 1, touched_ms: ctx.now }, 'tasks'));
+    }
+    await withTopRule(ctx, 'uncheckTask', `Tâche décochée : ${row.description}`, changes);
   },
 
   // Annule l'action opId, si c'est la dernière non annulée. Les changements sont défaits dans l'ordre

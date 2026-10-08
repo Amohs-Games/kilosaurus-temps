@@ -312,3 +312,41 @@ test('moveTask sans changement d’ordre, positions avec trous : rien ne s’éc
   assert.equal(opsCount(sqlite), n);
   assert.equal(snapshot(sqlite), before);
 });
+
+test('uncheckTask : positions uniques parmi les tâches à faire, la décochée repasse en haut et bascule', async () => {
+  const { call, rows, clock, sqlite } = await makeEnv();
+  ok(await call('addTask', { id: 'A', description: 'A', project: 'Studio', type: 'Social' }));
+  clock.advance(1);
+  ok(await call('addTask', { id: 'B', description: 'B', project: 'Fluffy', type: 'Art' }));
+  clock.advance(1);
+  ok(await call('addTask', { id: 'C', description: 'C', project: 'Fluffy', type: 'Dev' }));
+  ok(await call('checkTask', { id: 'A' }));
+  ok(await call('start', { id: 's1', project: 'Fluffy', type: 'Misc' }));
+  clock.advance(1);
+  ok(await call('moveTask', { id: 'C', before: 'B' }));
+  clock.advance(1);
+  const n = opsCount(sqlite);
+  const s = ok(await call('uncheckTask', { id: 'A' }));
+  assert.deepEqual(ids(s), ['A', 'C', 'B']);
+  assert.deepEqual(s.tasks.map((t) => t.position), [1, 2, 3]);
+  assert.deepEqual(s.choice, { project: 'Studio', type: 'Social' });
+  const run = rows().find((r) => r.end_ms == null);
+  assert.equal(run.project, 'Studio');
+  assert.equal(run.start_ms, clock.now());
+  assert.equal(opsCount(sqlite), n + 1);
+});
+
+test('liste limitée à 30 tâches à faire : addTask et uncheckTask refusent au-delà', async () => {
+  const { call, sqlite } = await makeEnv();
+  ok(await call('addTask', { id: 'first', description: 'première' }));
+  ok(await call('checkTask', { id: 'first' }));
+  for (let i = 0; i < 30; i += 1) ok(await call('addTask', { id: `t${i}`, description: `t${i}` }));
+  const frozen = snapshot(sqlite);
+  const n = opsCount(sqlite);
+  fails(await call('addTask', { id: 'extra', description: 'de trop' }), 'invalid', /Liste pleine : 30 tâches à faire au plus\./);
+  fails(await call('uncheckTask', { id: 'first' }), 'invalid', /Liste pleine : 30 tâches à faire au plus\./);
+  assert.equal(snapshot(sqlite), frozen);
+  assert.equal(opsCount(sqlite), n);
+  ok(await call('checkTask', { id: 't0' }));
+  ok(await call('addTask', { id: 'extra', description: 'de trop' }));
+});

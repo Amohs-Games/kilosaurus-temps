@@ -174,6 +174,7 @@
   var WORKDAY_HOUR = 6;
   var MAX_SESSION_MS = 24 * HOUR;
   var MAX_DESCRIPTION = 200;
+  var MAX_TODO = 30;
 
   // Une activité absente, null ou vide veut dire « pas donnée » (repli), comme sur le serveur.
   function typeOrFallback(value, fallback) {
@@ -199,7 +200,9 @@
     return ((s && s.tasks) || [])
       .map(function (t, i) { return { t: t, i: i }; })
       .filter(function (x) { return !x.t.done; })
-      .sort(function (a, b) { return (a.t.position - b.t.position) || (a.i - b.i); })
+      .sort(function (a, b) {
+        return (a.t.position - b.t.position) || (a.i - b.i) || (a.t.id < b.t.id ? -1 : a.t.id > b.t.id ? 1 : 0);
+      })
       .map(function (x) { return x.t; });
   }
   // Faites (ordre des coches).
@@ -290,6 +293,7 @@
       var taskType = typeOrFallback(p.type, cur.type);
       if ((s.projects || []).indexOf(taskProject) < 0 || isPauseType(taskType)) return false;
       var todo = todoTasks(s);
+      if (todo.length >= MAX_TODO) return false;
       var position = todo.length ? todo.reduce(function (m, t) { return Math.max(m, t.position); }, 0) + 1 : 1;
       s.tasks.push({ id: p.id, description: description, project: taskProject, type: taskType, position: position, done: null, started: null });
     } else if (action === 'editTask') {
@@ -346,6 +350,10 @@
     } else if (action === 'uncheckTask') {
       task = findTask(s, p.id);
       if (!task || !task.done) return false;
+      var todoNow = todoTasks(s);
+      if (todoNow.length >= MAX_TODO) return false;
+      // Reprend sa position ; les tâches à faire à cette position ou après descendent d'un cran.
+      todoNow.forEach(function (t) { if (t.position >= task.position) t.position += 1; });
       task.done = null;
       task.started = null;
     } else {
