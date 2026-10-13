@@ -118,11 +118,11 @@ test('base : tâches figées, ni modifiées ni effacées', () => {
   db.exec(SCHEMA);
 });
 
-test('migrations 2026-10-12 puis 2026-10-13 : une base d’avant arrive à la même forme qu’une base neuve, liens gardés', () => {
+test('migrations du 12 puis du 13 octobre : une base d’avant arrive à la même forme qu’une base neuve, liens gardés', () => {
   const { DatabaseSync } = process.getBuiltinModule('node:sqlite');
   const migration = (name) => readFileSync(new URL(`../server/migrations/${name}.sql`, import.meta.url), 'utf8');
-  // Le schéma d'avant les tâches actives : sans la colonne des tâches.
-  const before = SCHEMA.replace(/^[ \t]*task_ids TEXT,[^\n]*\n([ \t]*--[^\n]*\n)*/gm, '');
+  // Le schéma d'avant les tâches actives : sans les colonnes des tâches et des activités.
+  const before = SCHEMA.replace(/^[ \t]*(task_ids|task_types) TEXT,[^\n]*\n([ \t]*--[^\n]*\n)*/gm, '');
   assert.ok(!/task_/.test(before), 'schéma d’avant reconstruit');
   const old = new DatabaseSync(':memory:');
   old.exec(before);
@@ -131,12 +131,13 @@ test('migrations 2026-10-12 puis 2026-10-13 : une base d’avant arrive à la m�
   insertRow(old, { id: 'lie', start_ms: at('2026-10-01T09:00:00+02:00'), end_ms: at('2026-10-01T10:00:00+02:00') });
   old.prepare("UPDATE entries SET task_id = 'T1' WHERE id = 'lie'").run();
   old.exec(migration('2026-10-13-taches-paralleles'));
+  old.exec(migration('2026-10-13-activites-paralleles'));
   old.exec(SCHEMA); // db:schema après les migrations : rien ne casse
   const fresh = makeDb();
   const cols = (db, table) => db.prepare(`PRAGMA table_info(${table})`).all().map((c) => `${c.name}:${c.type}`);
   for (const table of ['entries', 'archive_entries']) {
     assert.deepEqual(cols(old, table), cols(fresh, table), table);
-    assert.equal(cols(fresh, table).at(-1), 'task_ids:TEXT', `${table} : task_ids en dernier`);
+    assert.deepEqual(cols(fresh, table).slice(-2), ['task_ids:TEXT', 'task_types:TEXT'], `${table} : task_ids puis task_types en dernier`);
   }
   assert.equal(old.prepare("SELECT task_ids FROM entries WHERE id = 'lie'").get().task_ids, 'T1');
   assert.equal(old.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'entries_task'").get(), undefined);

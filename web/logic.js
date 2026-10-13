@@ -245,16 +245,42 @@
   // Les tâches d’un morceau (un morceau d’avant les tâches en parallèle n’a que `task`).
   function tasksOfRow(row) { return row.tasks || (row.task ? [row.task] : []); }
 
-  // Ferme le compteur en cours à `endIso`. Un morceau crédite chacune de ses tâches du temps entier : le
-  // temps affiché ne recule pas avant la réponse du serveur.
+  // Les parts d’un morceau : une par tâche, chacune une fraction égale du temps, sur l’activité de sa
+  // tâche ; sans tâche, une seule part entière sur l’activité du morceau. Le partage n’existe qu’au
+  // calcul : le morceau, lui, garde la liste complète.
+  function sharesOf(row) {
+    var ids = tasksOfRow(row);
+    if (!ids.length) return [{ task: null, type: typeOf(row), part: 1 }];
+    var types = row.taskTypes || [];
+    return ids.map(function (id, i) { return { task: id, type: canonicalType(types[i] || typeOf(row)), part: 1 / ids.length }; });
+  }
+
+  // Les parts d’un morceau regroupées par activité (deux tâches Art et une Social : Art ⅔, Social ⅓).
+  function partsByType(row) {
+    var out = [];
+    sharesOf(row).forEach(function (sh) {
+      var hit = out.filter(function (x) { return x.type === sh.type; })[0];
+      if (hit) hit.part += sh.part;
+      else out.push({ type: sh.type, part: sh.part });
+    });
+    return out;
+  }
+
+  // L’activité de chaque tâche, pour un morceau qui s’ouvre avec les tâches `ids`.
+  function taskTypesFor(s, ids, type) {
+    return ids.map(function (id) { var t = findTask(s, id); return t ? typeOf(t) : type; });
+  }
+
+  // Ferme le compteur en cours à `endIso`. Un morceau crédite chacune de ses tâches de sa part : le temps
+  // affiché ne recule pas avant la réponse du serveur.
   function closeRunning(s, endIso) {
     var run = s.running;
     run.end = endIso;
     run.hours = hoursBetween(run.start, endIso);
     var ms = Math.max(0, new Date(endIso).getTime() - new Date(run.start).getTime());
-    tasksOfRow(run).forEach(function (id) {
-      var t = findTask(s, id);
-      if (t) t.spentMs = (t.spentMs || 0) + ms;
+    sharesOf(run).forEach(function (sh) {
+      var t = sh.task ? findTask(s, sh.task) : null;
+      if (t) t.spentMs = (t.spentMs || 0) + ms * sh.part;
     });
     s.last = run;
     upsertToday(s, run);
@@ -268,7 +294,8 @@
     var run = s.running;
     ids = ids || [];
     if (!run || isPause(run)) return;
-    if (run.project === project && typeOf(run) === type && tasksOfRow(run).join() === ids.join()) return;
+    var taskTypes = taskTypesFor(s, ids, type);
+    if (run.project === project && typeOf(run) === type && tasksOfRow(run).join() === ids.join() && (run.taskTypes || []).join() === taskTypes.join()) return;
     var runStart = new Date(run.start).getTime();
     var start = Math.max(atMs, runStart);
     if (start - runStart > MAX_SESSION_MS) return;
@@ -277,6 +304,7 @@
     s.running = {
       id: 'local-' + start + '-' + project + '-' + type, project: project, type: type, date: dayKey(start), start: startIso,
       end: null, hours: null, note: '', source: 'app', corrected: false, tasks: ids.slice(), task: ids.length ? ids[ids.length - 1] : null,
+      taskTypes: taskTypes,
     };
     upsertToday(s, s.running);
   }
@@ -343,9 +371,12 @@
         if (isPauseType(next.type)) return false;
       }
       if (next.description === task.description && next.project === task.project && next.type === task.type) return false;
+      var retyped = next.type !== task.type;
       task.description = next.description;
       task.project = next.project;
       task.type = next.type;
+      // Une tâche en cours qui change d’activité : nouveau morceau avec les nouvelles activités.
+      if (retyped && actives.indexOf(task.id) >= 0) setActives(s, actives, atMs);
     } else if (action === 'deleteTask') {
       task = findTask(s, p.id);
       if (!task) return false;
@@ -402,11 +433,13 @@
     return true;
   }
 
-  // Temps passé sur une tâche : ses morceaux terminés (serveur), plus le morceau en cours s’il la contient.
+  // Temps passé sur une tâche : ses parts des morceaux terminés (serveur), plus sa part du morceau en
+  // cours s’il la contient.
   function taskSpentMs(s, task, nowMs) {
     var ms = (task && task.spentMs) || 0;
     var run = s && s.running;
-    if (task && run && tasksOfRow(run).indexOf(task.id) >= 0) ms += Math.max(0, nowMs - new Date(run.start).getTime());
+    var ids = run ? tasksOfRow(run) : [];
+    if (task && ids.indexOf(task.id) >= 0) ms += Math.max(0, nowMs - new Date(run.start).getTime()) / ids.length;
     return ms;
   }
 
@@ -424,7 +457,7 @@
       var type = p.type ? canonicalType(p.type) : (s.running ? typeOf(s.running) : DEFAULT_TYPE);
       // Le morceau reçoit toutes les tâches en cours, quel que soit son projet ; aucune pour une pause.
       var ids = type === PAUSE_NAME ? [] : activeIdsOf(s);
-      if (s.running && s.running.project === p.project && typeOf(s.running) === type && tasksOfRow(s.running).join() === ids.join()) return s;
+      if (s.running && s.running.project === p.project && typeOf(s.running) === type && tasksOfRow(s.running).join() === ids.join() && (s.running.taskTypes || []).join() === taskTypesFor(s, ids, type).join()) return s;
       var start = new Date(new Date(at).getTime() - (p.offsetMinutes || 0) * 60000);
       if (s.running) {
         var prevStart = new Date(s.running.start);
@@ -434,6 +467,7 @@
       s.running = {
         id: p.id, project: p.project, type: type, date: dayKey(start), start: start.toISOString(), end: null,
         hours: null, note: p.note || '', source: 'app', corrected: false, tasks: ids, task: ids.length ? ids[ids.length - 1] : null,
+        taskTypes: taskTypesFor(s, ids, type),
       };
       upsertToday(s, s.running);
       if (type !== PAUSE_NAME) s.choice = { project: p.project, type: type };
@@ -520,7 +554,7 @@
       if (!r.start) return;
       var a = Math.max(new Date(r.start).getTime(), midnight);
       var b = Math.min(r.end ? new Date(r.end).getTime() : nowMs, nowMs);
-      if (b > a) segments.push({ start: a, end: b, type: typeOf(r) });
+      if (b > a) segments.push({ start: a, end: b, type: typeOf(r), parts: partsByType(r) });
     });
     segments.sort(function (x, y) { return x.start - y.start; });
     var from = Math.min(midnight + DAY_START_HOUR * HOUR, segments.length ? segments[0].start : Infinity);
@@ -560,11 +594,12 @@
       var day = out.byDay[r.date];
       if (!day) return;
       var h = rowHours(r, nowMs);
-      var t = typeOf(r);
       day.total += h;
-      day.byType[t] = (day.byType[t] || 0) + h;
       out.total += h;
-      out.byType[t] = (out.byType[t] || 0) + h;
+      partsByType(r).forEach(function (pt) {
+        day.byType[pt.type] = (day.byType[pt.type] || 0) + h * pt.part;
+        out.byType[pt.type] = (out.byType[pt.type] || 0) + h * pt.part;
+      });
       out.byProject[r.project] = (out.byProject[r.project] || 0) + h;
     });
     return out;
@@ -593,7 +628,7 @@
     elapsed: elapsed, duration: duration, clock: clock, dayLabel: dayLabel,
     entryEdit: entryEdit, isLong: isLong, forgotMax: forgotMax, visibleProjects: visibleProjects, pickableProjects: pickableProjects,
     isForgotten: isForgotten, applyLocal: applyLocal, todoTasks: todoTasks, doneTasks: doneTasks, topTask: topTask, choiceOf: choiceOf,
-    activeTasksOf: activeTasksOf, taskSpentMs: taskSpentMs,
+    activeTasksOf: activeTasksOf, taskSpentMs: taskSpentMs, sharesOf: sharesOf, partsByType: partsByType,
     typesOf: typesOf, typeOf: typeOf, typeColor: typeColor, textOn: textOn, projectColor: projectColor, isPause: isPause, todayPause: todayPause, sessionOf: sessionOf, PAUSE_TYPE: PAUSE_TYPE, rowHours: rowHours, todayTotal: todayTotal, todayWorked: todayWorked,
     dayTimeline: dayTimeline, weekRange: weekRange, monthRange: monthRange, aggregate: aggregate, recapMatches: recapMatches, backupWarnings: backupWarnings,
   };

@@ -111,7 +111,7 @@ test('frise : de 8 h (ou plus tôt) à maintenant, segments découpés à minuit
   const t = L.dayTimeline([sess('n', 'Dev', '2026-09-30T23:00:00+02:00', '2026-10-01T01:00:00+02:00')], now);
   assert.equal(t.from, at('2026-10-01T00:00:00+02:00'));
   assert.equal(t.to, now);
-  assert.deepEqual(t.segments, [{ start: at('2026-10-01T00:00:00+02:00'), end: at('2026-10-01T01:00:00+02:00'), type: 'Dev' }]);
+  assert.deepEqual(t.segments, [{ start: at('2026-10-01T00:00:00+02:00'), end: at('2026-10-01T01:00:00+02:00'), type: 'Dev', parts: [{ type: 'Dev', part: 1 }] }]);
   const t2 = L.dayTimeline([sess('m', 'Art', '2026-10-01T09:00:00+02:00', null)], now);
   assert.equal(t2.from, at('2026-10-01T08:00:00+02:00'));
   assert.equal(t2.segments[0].end, now);
@@ -397,15 +397,16 @@ test('activateTask arrêté : le choix devient la tâche, rien ne se lance ; ▶
   assert.equal(act(s, 'activateTask', { id: 'A' }, T2), s, 'déjà active : sans effet');
 });
 
-test('deux tâches actives une heure : chacune reçoit l’heure entière ; la dernière activée donne le choix', () => {
+test('deux tâches actives une heure : 30 min chacune au calcul ; la dernière activée donne le choix', () => {
   let s = act(twoTasksRunning(), 'activateTask', { id: 'A' }, T0);
   s = act(s, 'activateTask', { id: 'B' }, T0);
   assert.deepEqual(activeIds(s), ['A', 'B']);
   assert.deepEqual(s.running.tasks, ['A', 'B']);
   assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Art' });
   s = act(s, 'stop', {}, T2);
-  assert.equal(s.tasks.find((t) => t.id === 'A').spentMs, 60 * 60000);
-  assert.equal(s.tasks.find((t) => t.id === 'B').spentMs, 60 * 60000);
+  assert.equal(s.tasks.find((t) => t.id === 'A').spentMs, 30 * 60000);
+  assert.equal(s.tasks.find((t) => t.id === 'B').spentMs, 30 * 60000);
+  assert.deepEqual(s.last.taskTypes, ['Social', 'Art'], 'le morceau garde l’activité de chaque tâche');
 });
 
 test('activer une tâche de plus en marche : nouveau morceau avec la liste, même seconde', () => {
@@ -459,7 +460,7 @@ test('valider une tâche en cours : elle sort de la liste, le compteur continue 
   const a = s.tasks.find((t) => t.id === 'A');
   assert.equal(a.done, new Date(T2).toISOString());
   assert.equal(a.started, new Date(T0).toISOString());
-  assert.equal(a.spentMs, 60 * 60000);
+  assert.equal(a.spentMs, 30 * 60000, 'une heure partagée avec B');
 });
 
 test('deactivateTask { id } : celle-là ; sans id : toutes ; le choix reste ; rien à retirer : sans effet', () => {
@@ -476,13 +477,16 @@ test('deactivateTask { id } : celle-là ; sans id : toutes ; le choix reste ; ri
   assert.equal(act(s, 'deactivateTask', {}, T2), s);
 });
 
-test('editTask d’une tâche en cours : ni le choix ni le compteur ne bougent', () => {
+test('editTask d’une tâche en cours : le projet ne bouge rien ; une autre activité ouvre un morceau, le choix reste', () => {
   let s = act(withTasks(), 'addTask', { id: 'A', description: 'A', project: 'Fluffy', type: 'Dev' }, T0);
   s = act(s, 'activateTask', { id: 'A' }, T0);
   s = act(s, 'start', { id: 'r', project: 'Fluffy', type: 'Dev' }, T0);
-  s = act(s, 'editTask', { id: 'A', project: 'Jam', type: 'Art' }, T1);
-  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Dev' });
+  s = act(s, 'editTask', { id: 'A', project: 'Jam' }, T1);
   assert.equal(s.running.id, 'r');
+  s = act(s, 'editTask', { id: 'A', type: 'Art' }, T1);
+  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Dev' });
+  assert.deepEqual([s.running.type, s.running.taskTypes, s.running.start], ['Dev', ['Art'], new Date(T1).toISOString()]);
+  assert.deepEqual(s.last.taskTypes, ['Dev']);
   assert.equal(act(s, 'editTask', { id: 'A', type: 'Pause' }).tasks[0].type, 'Art');
 });
 
@@ -622,4 +626,39 @@ test('liste limitée à 30 tâches à faire : addTask et uncheckTask sans effet 
   assert.ok(L.doneTasks(act(s, 'uncheckTask', { id: 'first' })).length === 1);
   s = act(s, 'checkTask', { id: 't0' }, T1);
   assert.equal(L.todoTasks(act(s, 'addTask', { id: 'extra', description: 'de trop' })).length, 30);
+});
+
+test('parts d’un morceau : une par tâche, sur son activité ; regroupées par activité ; sans tâche, une part entière', () => {
+  const row = { project: 'Fluffy', type: 'Art', tasks: ['A', 'B', 'C'], taskTypes: ['Art', 'Art', 'Social'] };
+  assert.deepEqual(L.sharesOf(row).map((x) => x.type), ['Art', 'Art', 'Social']);
+  const parts = L.partsByType(row);
+  assert.deepEqual(parts.map((x) => x.type), ['Art', 'Social']);
+  assert.ok(Math.abs(parts[0].part - 2 / 3) < 1e-9 && Math.abs(parts[1].part - 1 / 3) < 1e-9);
+  assert.deepEqual(L.partsByType({ project: 'Fluffy', type: 'Dev' }), [{ type: 'Dev', part: 1 }]);
+  // Un morceau lié avant l’enregistrement des activités : sa propre activité pour chaque tâche.
+  assert.deepEqual(L.partsByType({ project: 'Fluffy', type: 'Dev', tasks: ['A'] }), [{ type: 'Dev', part: 1 }]);
+});
+
+test('récap : chaque activité reçoit sa part ; le total reste celui de la journée', () => {
+  const rows = [
+    Object.assign(sess('a', 'Art', '2026-10-01T09:00:00+02:00', '2026-10-01T10:00:00+02:00'), { tasks: ['A', 'B'], taskTypes: ['Art', 'Social'] }),
+    sess('b', 'Dev', '2026-10-01T10:00:00+02:00', '2026-10-01T11:00:00+02:00'),
+  ];
+  const g = L.aggregate(rows, ['2026-10-01'], at('2026-10-01T12:00:00+02:00'));
+  assert.equal(g.total, 2);
+  assert.deepEqual(g.byType, { Art: 0.5, Social: 0.5, Dev: 1 });
+  assert.equal(g.byDay['2026-10-01'].total, 2);
+  assert.deepEqual(g.byDay['2026-10-01'].byType, { Art: 0.5, Social: 0.5, Dev: 1 });
+});
+
+test('temps d’une tâche en cours : sa part du morceau en cours', () => {
+  const s = Object.assign(withTasks(), {
+    activeTasks: ['A', 'B'],
+    running: { id: 'r', project: 'Fluffy', type: 'Dev', start: T0, end: null, tasks: ['A', 'B'], taskTypes: ['Dev', 'Art'] },
+    tasks: [
+      { id: 'A', description: 'A', project: 'Fluffy', type: 'Dev', position: 1, done: null, started: null, spentMs: 0 },
+      { id: 'B', description: 'B', project: 'Fluffy', type: 'Art', position: 2, done: null, started: null, spentMs: 0 },
+    ],
+  });
+  assert.equal(L.taskSpentMs(s, s.tasks[0], Date.parse(T1)), 15 * 60000);
 });

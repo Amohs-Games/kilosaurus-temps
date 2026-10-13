@@ -1,7 +1,7 @@
 // Service worker : l'app s'ouvre même sans réseau, mais affiche toujours la dernière version.
 // Réseau d'abord : chaque fichier de l'app est redemandé au serveur ; la copie locale ne sert que
 // hors ligne. Les appels à l'API sont des POST : ils ne passent jamais par ici.
-var CACHE = 'kt-v15';
+var CACHE = 'kt-v17';
 var SHELL = [
   './', 'index.html', 'style.css', 'config.js', 'logic.js', 'app.js', 'manifest.json',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',

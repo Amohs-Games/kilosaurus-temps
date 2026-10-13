@@ -29,8 +29,11 @@ CREATE TABLE IF NOT EXISTS entries (
   touched_ms INTEGER NOT NULL,       -- dernière écriture : fait le « dernier log »
   deleted_ms INTEGER,
   task_ids TEXT,                     -- tâches actives pendant la session, ids séparés par des virgules (vide :
-                                     -- aucune) ; dernière colonne, comme l'ont faite server/migrations/
-                                     -- 2026-10-12-taches-actives.sql puis 2026-10-13-taches-paralleles.sql
+                                     -- aucune) ; server/migrations/2026-10-12-taches-actives.sql puis
+                                     -- 2026-10-13-taches-paralleles.sql
+  task_types TEXT,                   -- l'activité de chaque tâche de task_ids, même ordre, virgules. Le temps
+                                     -- n'est pas divisé en base : le partage entre tâches se fait au calcul.
+                                     -- Dernière colonne, comme l'a ajoutée 2026-10-13-activites-paralleles.sql
   CHECK (kind <> 'session' OR (start_ms IS NOT NULL AND hours IS NULL)),
   CHECK (kind <> 'block' OR (start_ms IS NULL AND end_ms IS NULL AND hours > 0)),
   CHECK (end_ms IS NULL OR (end_ms >= start_ms AND end_ms - start_ms <= 86400000))
@@ -100,6 +103,7 @@ CREATE TABLE IF NOT EXISTS archive_entries (
   touched_ms INTEGER NOT NULL,
   deleted_ms INTEGER,
   task_ids TEXT,
+  task_types TEXT,
   PRIMARY KEY (archived_day, id)
 );
 

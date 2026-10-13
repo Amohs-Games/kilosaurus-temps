@@ -2,7 +2,7 @@
 // (docs/specs/2026-10-13-taches-paralleles-design.md).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeEnv, makeClock, ok, fails } from './server-harness.mjs';
+import { makeEnv, makeClock, ok, fails, insertRow } from './server-harness.mjs';
 
 const opsCount = (sqlite) => sqlite.prepare('SELECT COUNT(*) AS n FROM ops').get().n;
 const taskRow = (sqlite, id) => sqlite.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
@@ -188,7 +188,7 @@ test('activateTask compteur arrêté : le choix devient la tâche, rien ne se la
   assert.deepEqual(linked(open(rows())), ['A']);
 });
 
-test('deux tâches actives une heure : chacune reçoit l’heure entière', async () => {
+test('deux tâches actives une heure : elles se partagent l’heure au calcul, 30 min chacune', async () => {
   const { call, clock } = await twoTasksRunning();
   ok(await call('activateTask', { id: 'A' }));
   let s = ok(await call('activateTask', { id: 'B' }));
@@ -197,8 +197,8 @@ test('deux tâches actives une heure : chacune reçoit l’heure entière', asyn
   assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Art' }, 'la dernière activée donne le choix');
   clock.advance(60);
   s = ok(await call('stop'));
-  assert.equal(task(s, 'A').spentMs, 60 * 60000);
-  assert.equal(task(s, 'B').spentMs, 60 * 60000);
+  assert.equal(task(s, 'A').spentMs, 30 * 60000);
+  assert.equal(task(s, 'B').spentMs, 30 * 60000);
 });
 
 test('activer une tâche de plus compteur en marche : nouveau morceau avec la liste, même seconde', async () => {
@@ -245,7 +245,7 @@ test('pause : aucune tâche ; REPRENDRE repart avec toutes ; STOP les garde', as
   clock.advance(5);
   s = ok(await call('stop'));
   assert.deepEqual(s.activeTasks, ['A', 'B']);
-  assert.equal(task(s, 'A').spentMs, 15 * 60000, 'la pause ne compte pas');
+  assert.equal(task(s, 'A').spentMs, 7.5 * 60000, 'la pause ne compte pas ; 15 min partagées entre A et B');
   assert.equal(rows().filter((r) => linked(r).includes('B')).length, 2);
 });
 
@@ -281,7 +281,7 @@ test('valider une tâche active compteur en marche : elle sort de la liste, le c
   const done = task(s, 'A');
   assert.equal(done.done, new Date(clock.now()).toISOString());
   assert.equal(done.started, new Date(startA).toISOString());
-  assert.equal(done.spentMs, 40 * 60000);
+  assert.equal(done.spentMs, 20 * 60000, '40 min partagées avec B');
 });
 
 test('deactivateTask { id } : retire celle-là ; sans id : toutes ; le choix reste ; rien à retirer : aucune écriture', async () => {
@@ -305,16 +305,51 @@ test('deactivateTask { id } : retire celle-là ; sans id : toutes ; le choix res
   assert.equal(opsCount(sqlite), n + 1);
 });
 
-test('editTask d’une tâche active : ni le choix ni le compteur ne bougent', async () => {
+test('editTask d’une tâche active : le projet ne bouge rien ; une autre activité ouvre un morceau avec les nouvelles activités', async () => {
   const { call, rows, clock } = await makeEnv();
   ok(await call('addTask', { id: 'A', description: 'A', project: 'Fluffy', type: 'Dev' }));
+  ok(await call('addTask', { id: 'B', description: 'B', project: 'Fluffy', type: 'Dev' }));
   ok(await call('activateTask', { id: 'A' }));
+  ok(await call('activateTask', { id: 'B' }));
   ok(await call('start', { id: 's', project: 'Fluffy', type: 'Dev' }));
   clock.advance(20);
-  const s = ok(await call('editTask', { id: 'A', project: 'Studio', type: 'Art' }));
+  let s = ok(await call('editTask', { id: 'A', project: 'Studio' }));
   assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Dev' });
-  assert.deepEqual(s.activeTasks, ['A']);
   assert.equal(rows().length, 1);
+  s = ok(await call('editTask', { id: 'A', type: 'Art' }));
+  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Dev' }, 'le choix ne bouge pas');
+  assert.deepEqual(s.activeTasks, ['A', 'B']);
+  const [prev, run] = rows();
+  assert.equal(prev.end_ms, clock.now());
+  assert.equal(prev.task_types, 'Dev,Dev', 'le passé garde ses activités');
+  assert.deepEqual([run.type, run.task_types, run.start_ms], ['Dev', 'Art,Dev', clock.now()]);
+});
+
+// ---- Activités d'un morceau ----
+
+test('un morceau garde l’activité de chacune de ses tâches, dans leur ordre ; le temps n’y est pas divisé', async () => {
+  const { call, rows } = await twoTasksRunning();
+  ok(await call('activateTask', { id: 'A' }));
+  let s = ok(await call('activateTask', { id: 'B' }));
+  assert.deepEqual(s.running.taskTypes, ['Social', 'Art']);
+  assert.equal(open(rows()).task_types, 'Social,Art');
+  assert.equal(open(rows()).end_ms, null);
+  s = ok(await call('start', { id: 'p', project: 'Fluffy', type: 'Pause' }));
+  assert.deepEqual(s.running.taskTypes, [], 'une pause n’a pas de tâche');
+  assert.equal(open(rows()).task_types, null);
+  s = ok(await call('deactivateTask', { id: 'A' }));
+  s = ok(await call('start', { id: 'r', project: 'Fluffy', type: 'Art' }));
+  assert.deepEqual(s.running.taskTypes, ['Art']);
+});
+
+test('history renvoie l’activité de chaque tâche de chaque morceau', async () => {
+  const { call, clock } = await twoTasksRunning();
+  ok(await call('activateTask', { id: 'A' }));
+  ok(await call('activateTask', { id: 'B' }));
+  clock.advance(30);
+  ok(await call('stop'));
+  const h = ok(await call('history', { from: '2026-10-01', to: '2026-10-01' }));
+  assert.deepEqual(h.rows.map((r) => r.taskTypes), [[], ['Social'], ['Social', 'Art']]);
 });
 
 test('deleteTask d’une tâche active : elle sort de la liste, le compteur continue avec les autres', async () => {
@@ -355,6 +390,15 @@ test('des réglages qui visent une tâche validée ou supprimée l’ignorent : 
 test('un id de tâche avec une virgule est refusé', async () => {
   const { call } = await makeEnv();
   fails(await call('addTask', { id: 'a,b', description: 'x' }), 'invalid', /virgule/);
+});
+
+test('un morceau lié avant l’enregistrement des activités prend sa propre activité pour chaque tâche', async () => {
+  const { call, sqlite } = await makeEnv();
+  ok(await call('addTask', { id: 'A', description: 'A', project: 'Fluffy', type: 'Art' }));
+  insertRow(sqlite, { id: 'vieux', start_ms: Date.parse('2026-10-01T08:00:00+02:00'), end_ms: Date.parse('2026-10-01T08:30:00+02:00'), type: 'Dev' });
+  sqlite.prepare("UPDATE entries SET task_ids = 'A' WHERE id = 'vieux'").run();
+  const h = ok(await call('history', { from: '2026-10-01', to: '2026-10-01' }));
+  assert.deepEqual(h.rows[0].taskTypes, ['Dev']);
 });
 
 // ---- Temps d'une tâche ----

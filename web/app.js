@@ -11,7 +11,7 @@
 
   var L = window.KTLogic;
   var API = window.KT_API_URL;
-  var VERSION = '2.2.0';
+  var VERSION = '2.4.0';
   var TIMEOUT_MS = 10000; // le serveur répond en quelques centaines de ms ; au-delà, c'est le réseau.
   var POLL_MS = 20000;    // relecture de l'état quand la page est visible (compteur lancé ailleurs)
   var RETRY_MS = 30000;
@@ -330,11 +330,10 @@
       return;
     }
     // Haut en bas = ordre d'usage : la tâche du haut, ce qui tourne, choisir un projet, lancer, les
-    // tâches en cours, l'activité, la journée, après coup.
+    // tâches en cours (ou, sans tâche en cours, l'activité), la journée, après coup.
     var actives = L.activeTasksOf(s);
     app.innerHTML = header(s) + backupBanner(s) + topTaskLine(s) + hero(s) +
-      (actives.length ? section('En cours', activeTasksHtml(s, actives)) : '') +
-      section('Activité', typeBar(s)) +
+      (actives.length ? section('En cours', activeTasksHtml(s, actives)) : section('Activité', typeBar(s))) +
       section('Ajouter un bloc d’heures', blocks(), 'add') +
       todayView(s);
     tick();
@@ -394,8 +393,16 @@
         '</section>';
     }
     var paused = L.isPause(r);
-    var t = L.typeOf(r);
-    var c = L.typeColor(s, t);
+    // Une pastille par activité du morceau en cours : celle du compteur, ou celles de ses tâches (une
+    // par activité différente). Une seule à côté du projet ; plusieurs sur une ligne en dessous.
+    var types = L.partsByType(r).map(function (pt) { return pt.type; });
+    var pills = types.map(function (t) {
+      var c = L.typeColor(s, t);
+      return '<span class="pill" style="background:' + c + ';color:' + L.textOn(c) + '">' + esc(t) + '</span>';
+    }).join(' ');
+    var title = types.length > 1
+      ? '<div class="hero-project">' + esc(r.project) + '</div><div class="hero-pills">' + pills + '</div>'
+      : '<div class="hero-project">' + esc(r.project) + ' · ' + pills + '</div>';
     // Le grand compteur compte le travail du jour, pauses exclues ; dessous, la séance depuis son
     // lancement et le cumul de ses pauses. Pause (ou Reprendre) au-dessus de STOP.
     var stop = '<button class="stop" data-act="stop">' + ICON.stop + 'STOP</button>';
@@ -404,7 +411,7 @@
       : '<button class="pause" data-act="pause">' + ICON.pause + 'PAUSE</button>') + stop;
     var session = L.sessionOf(s.today, r, Date.now());
     return '<section class="hero' + (paused ? ' paused' : '') + '">' +
-      '<div class="hero-project">' + esc(r.project) + ' · <span class="pill" style="background:' + c + ';color:' + L.textOn(c) + '">' + esc(t) + '</span></div>' +
+      title +
       '<div class="hero-time" id="elapsed">' + workedText(s) + '</div>' +
       '<div class="hero-pause" id="session-time">' + sessionTimeText(session) + '</div>' +
       '<div class="hero-pause" id="session-pause">' + sessionPauseText(session) + '</div>' +
@@ -456,7 +463,14 @@
     var span = Math.max(tl.to - tl.from, 60000);
     var pct = function (ms) { return ((ms - tl.from) / span * 100).toFixed(2) + '%'; };
     var html = tl.segments.map(function (g) {
-      return '<span class="seg' + (g.type === L.PAUSE_TYPE ? ' seg-pause' : '') + '" style="left:' + pct(g.start) + ';width:' + (((g.end - g.start) / span) * 100).toFixed(2) + '%;background-color:' + L.typeColor(s, g.type) + '"></span>';
+      var box = 'left:' + pct(g.start) + ';width:' + (((g.end - g.start) / span) * 100).toFixed(2) + '%';
+      // Plusieurs activités en même temps : une bande par activité, empilées, de hauteur égale à sa part.
+      if (g.parts && g.parts.length > 1) {
+        return '<span class="seg seg-multi" style="' + box + '">' + g.parts.map(function (pt) {
+          return '<i style="flex:' + pt.part.toFixed(4) + ';background-color:' + L.typeColor(s, pt.type) + '"></i>';
+        }).join('') + '</span>';
+      }
+      return '<span class="seg' + (g.type === L.PAUSE_TYPE ? ' seg-pause' : '') + '" style="' + box + ';background-color:' + L.typeColor(s, g.type) + '"></span>';
     }).join('');
     var h = new Date(tl.from);
     h.setMinutes(0, 0, 0);
@@ -1065,14 +1079,16 @@
   }
 
   function entryHtml(s, r, now) {
-    var t = L.typeOf(r);
+    // Toutes les activités du morceau (celles de ses tâches), la première donne la pastille.
+    var types = L.partsByType(r).map(function (pt) { return pt.type; });
+    var t = types[0];
     var long = L.isLong(r, s.threshold, now);
     var when = r.start ? L.clock(r.start) + ' → ' + (r.end ? L.clock(r.end) : 'en cours') : 'Bloc';
     var open = state.sessions.open === r.id;
     return '<div class="entry' + (open ? ' open' : '') + '">' +
       '<button class="entry-line" data-act="entryOpen" data-id="' + esc(r.id) + '">' +
       '<span class="dot" style="background:' + L.typeColor(s, t) + '"></span>' +
-      '<span class="entry-main"><span><b>' + esc(r.project) + '</b> · ' + esc(t) + '</span>' +
+      '<span class="entry-main"><span><b>' + esc(r.project) + '</b> · ' + types.map(esc).join(' + ') + '</span>' +
       '<small>' + when + (r.note ? ' · ' + esc(r.note) : '') + '</small></span>' +
       '<span class="entry-hours' + (long ? ' long' : '') + '">' + (long ? '⚠ ' : '') + L.duration(L.rowHours(r, now)) + '</span>' +
       '</button>' + (open ? entryForm(s, r) : '') + '</div>';

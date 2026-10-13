@@ -46,7 +46,7 @@ dernière action annulable, `{ opId, summary }`), plus :
   une tâche à faire ; `spentMs` = millisecondes passées dessus, morceau en cours non compris).
 - `activeTasks` : les `id` des tâches en cours, dans l'ordre d'activation (liste vide : aucune).
   `running.tasks` (et chaque ligne de `today`, `last`, `history`) : les tâches en cours pendant ce
-  morceau de compteur. (`activeTask` et `running.task` ne restent que pour les anciennes versions de
+  morceau de compteur, et `taskTypes` l'activité de chacune (même ordre). (`activeTask` et `running.task` ne restent que pour les anciennes versions de
   l'app : la dernière de chaque liste.)
 
 Seule exception : `history` renvoie
@@ -92,12 +92,15 @@ Règles :
   ne touche ni au choix ni au compteur. Plusieurs tâches peuvent être en cours à la fois (10 au
   plus), les mêmes sur tous les appareils : l'utilisateur mène plusieurs features en parallèle.
   - Chaque morceau de compteur (hors pause) s'inscrit sur **toutes** les tâches en cours, quel que
-    soit son projet : trois tâches en cours pendant une heure reçoivent chacune une heure.
+    soit son projet. Au calcul (`spentMs`, récap), son temps est partagé à parts égales entre elles :
+    une heure à trois tâches compte 20 min pour chacune, sur l'activité de chacune. Rien n'est divisé
+    en base.
   - Activer, désactiver ou valider une tâche, compteur en cours : le morceau se ferme et un autre
     s'ouvre à la même seconde avec la nouvelle liste.
   - Changer de projet ou d'activité (`start`, `select`) ne désactive rien. Pause et stop gardent les
     tâches en cours ; une pause ne compte pour aucune.
-  - Modifier le projet d'une tâche en cours ne touche pas au compteur.
+  - Modifier le projet d'une tâche en cours ne touche pas au compteur ; changer son activité ouvre un
+    nouveau morceau à la même seconde.
   - Ne valide ou n'active une tâche que si l'utilisateur le demande. `undo` annule l'action avec la
     bascule qu'elle a provoquée. La liste à faire tient 30 tâches au plus : `addTask` et
     `uncheckTask` sont refusés au-delà (« Liste pleine »).

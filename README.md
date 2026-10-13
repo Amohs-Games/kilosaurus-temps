@@ -147,14 +147,16 @@ Au premier lancement, l'app demande le code de l'appareil. Elle le garde ensuite
     choix ni au compteur. On peut très bien travailler sans tâche.
   - **Tâches en cours** : on peut en activer plusieurs (10 au plus), pour mener plusieurs features en
     parallèle. Activer une tâche met son projet et son activité au choix ; compteur en cours, il
-    bascule à la même seconde. La section **En cours**, au-dessus de la rangée Activité, liste chacune
-    avec son temps en direct, **✓** (valider) et **✕** (désactiver). Changer de projet ne désactive
-    rien ; Pause, Reprendre, Stop puis ▶ les gardent.
-  - **Temps d’une tâche** : chaque morceau de compteur garde la liste des tâches en cours pendant
-    qu’il tournait, et compte **entier pour chacune** : trois tâches en cours une heure reçoivent
-    chacune une heure (le total de la journée, lui, reste celui du compteur). Une pause ne compte pour
-    aucune. Corriger ou supprimer un morceau corrige ce temps. Il s’affiche dans le panneau après
-    « projet · activité ».
+    bascule à la même seconde. La section **En cours** remplace alors la rangée Activité : chaque
+    tâche avec son temps en direct, **✓** (valider) et **✕** (désactiver). Le compteur montre une
+    pastille par activité en cours (plusieurs : sous le projet). Changer de projet ne désactive rien ;
+    Pause, Reprendre, Stop puis ▶ les gardent.
+  - **Temps d’une tâche et des activités** : chaque morceau de compteur garde la liste des tâches en
+    cours et l’activité de chacune, sans rien diviser. Au calcul, son temps est **partagé à parts
+    égales** entre ses tâches : une heure à trois tâches compte 20 min pour chacune, et chaque part va
+    à l’activité de sa tâche (le récap par activité retombe sur le total de la journée). La frise
+    montre les activités qui se superposent en bandes empilées. Une pause ne compte pour aucune tâche.
+    Corriger ou supprimer un morceau corrige ces temps.
 - **Stop** : ferme le compteur. **+ note** : une note sur le compteur en cours.
 - **⏸ Pause** : le compteur continue, marqué pause (même projet) ; **▶ Reprendre** repart sur le
   choix (projet et activité choisis). Les pauses comptent dans le total du jour (« dont N min de

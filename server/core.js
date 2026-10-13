@@ -70,7 +70,7 @@ const LEGACY_TYPES = { Autre: 'Misc', Narration: 'Writing' };
 
 export const TASK_COLUMNS = ['id', 'description', 'project', 'type', 'position', 'done_day', 'started_ms', 'done_ms', 'source', 'created_ms', 'touched_ms', 'deleted_ms'];
 const SETTING_COLUMNS = ['key', 'value'];
-export const ENTRY_COLUMNS = ['id', 'project', 'kind', 'day', 'start_ms', 'end_ms', 'hours', 'type', 'note', 'source', 'created_ms', 'touched_ms', 'deleted_ms', 'task_ids'];
+export const ENTRY_COLUMNS = ['id', 'project', 'kind', 'day', 'start_ms', 'end_ms', 'hours', 'type', 'note', 'source', 'created_ms', 'touched_ms', 'deleted_ms', 'task_ids', 'task_types'];
 export const ACTIVE = 'deleted_ms IS NULL';
 
 export class AppError {
@@ -86,6 +86,13 @@ function joinIds(ids) { return ids && ids.length ? ids.join(',') : null; }
 export function typeOf(row) {
   const name = canonicalType(row.type);
   return TYPE_NAMES.includes(name) ? name : DEFAULT_TYPE;
+}
+// L'activité de chaque tâche d'un morceau, dans l'ordre de `task_ids` (`task_types`, virgules). Un
+// morceau lié avant que les activités soient enregistrées prend sa propre activité pour chaque tâche.
+export function taskTypesOf(row) {
+  const ids = idsOf(row.task_ids);
+  const types = idsOf(row.task_types).map((t) => canonicalType(t));
+  return ids.map((_, i) => types[i] || typeOf(row));
 }
 
 // ---- Lecture ----
@@ -135,7 +142,7 @@ export function toApi(r) {
   const hours = r.kind === 'block' ? r.hours : (r.end_ms == null ? null : Math.round((r.end_ms - r.start_ms) / 36000) / 100);
   // `task` : la dernière tâche du morceau, pour les clients d'avant les tâches en parallèle.
   const tasks = idsOf(r.task_ids);
-  return { id: r.id, project: r.project, type: typeOf(r), date: r.day, start: iso(r.start_ms), end: iso(r.end_ms), hours, note: r.note || '', source: r.source, tasks, task: tasks.length ? tasks[tasks.length - 1] : null };
+  return { id: r.id, project: r.project, type: typeOf(r), date: r.day, start: iso(r.start_ms), end: iso(r.end_ms), hours, note: r.note || '', source: r.source, tasks, task: tasks.length ? tasks[tasks.length - 1] : null, taskTypes: taskTypesOf(r) };
 }
 
 // État des sauvegardes, pour le bandeau d'alerte : dernière copie de bureau complète, et premier
@@ -175,18 +182,27 @@ export function choiceChanges(cfg, project, type) {
   return changes;
 }
 
-// Bascule du compteur en cours vers (project, type, tâches liées) à l'instant `at` : le morceau en
-// cours se ferme et un autre s'ouvre à la même seconde dès que l'un des trois change. Rien à faire
-// sans compteur, en pause, déjà sur ce morceau, ou si le compteur est oublié (plus de 24 h) : seul le
-// choix change alors.
-export async function switchTo(ctx, run, project, type, at, taskIds = []) {
+// Ce qu'un morceau qui s'ouvre sur l'activité `type` reçoit des tâches en cours (lignes `actives`) :
+// leurs ids et l'activité de chacune, dans le même ordre. Une pause n'en reçoit aucune. Le temps n'est
+// jamais divisé ici : le partage entre tâches se fait au calcul (temps d'une tâche, récap).
+function linkOf(type, actives) {
+  if (type === PAUSE || !actives.length) return { taskIds: [], taskTypes: [] };
+  return { taskIds: actives.map((t) => t.id), taskTypes: actives.map((t) => typeOf(t)) };
+}
+
+// Bascule du compteur en cours vers (project, type, tâches en cours) à l'instant `at` : le morceau en
+// cours se ferme et un autre s'ouvre à la même seconde dès que le projet, l'activité, les tâches ou
+// leurs activités changent. Rien à faire sans compteur, en pause, déjà sur ce morceau, ou si le
+// compteur est oublié (plus de 24 h) : seul le choix change alors.
+export async function switchTo(ctx, run, project, type, at, actives = []) {
   if (!run || typeOf(run) === PAUSE) return [];
-  if (run.project === project && typeOf(run) === type && (run.task_ids ?? null) === joinIds(taskIds)) return [];
+  const link = linkOf(type, actives);
+  if (run.project === project && typeOf(run) === type && (run.task_ids ?? null) === joinIds(link.taskIds) && (run.task_types ?? null) === joinIds(link.taskTypes)) return [];
   const start = Math.max(at, run.start_ms);
   if (start - run.start_ms > MAX_SESSION_MS) return [];
   return [
     change(run, { ...run, end_ms: start, touched_ms: ctx.now }),
-    change(null, newSession(ctx, { id: crypto.randomUUID(), project, start, type, taskIds })),
+    change(null, newSession(ctx, { id: crypto.randomUUID(), project, start, type, ...link })),
   ];
 }
 
@@ -204,9 +220,9 @@ function linkedSessions(db, fromMs) {
   );
 }
 
-// Avec le temps passé sur chacune : les sessions terminées, non supprimées, qui la contiennent. Une
-// session avec trois tâches compte entière pour chacune. Le morceau en cours n'y est pas, l'écran
-// l'ajoute.
+// Avec le temps passé sur chacune : les sessions terminées, non supprimées, qui la contiennent, chacune
+// partagée entre ses tâches (une heure à trois tâches : 20 min chacune). Le partage n'existe qu'au
+// calcul, jamais en base. Le morceau en cours n'y est pas, l'écran l'ajoute.
 async function listTasks(db, nowMs) {
   const since = localTime(workDayKey(nowMs), 6);
   const [todo, done] = await Promise.all([
@@ -218,12 +234,13 @@ async function listTasks(db, nowMs) {
   if (listed.length) {
     for (const s of await linkedSessions(db, Math.min(...listed.map((t) => t.created_ms)))) {
       if (s.end_ms == null) continue;
-      for (const id of idsOf(s.task_ids)) spentById.set(id, (spentById.get(id) || 0) + s.end_ms - s.start_ms);
+      const ids = idsOf(s.task_ids);
+      for (const id of ids) spentById.set(id, (spentById.get(id) || 0) + (s.end_ms - s.start_ms) / ids.length);
     }
   }
   return listed.map((r) => ({
     id: r.id, description: r.description, project: r.project, type: typeOf(r), position: r.position,
-    done: iso(r.done_ms), started: iso(r.started_ms), spentMs: spentById.get(r.id) || 0,
+    done: iso(r.done_ms), started: iso(r.started_ms), spentMs: Math.round(spentById.get(r.id) || 0),
   }));
 }
 
@@ -313,6 +330,7 @@ function newSession(ctx, f) {
     id: f.id, project: f.project, kind: 'session', day: dayKey(f.start), start_ms: f.start, end_ms: f.end ?? null, hours: null,
     type: f.type, note: f.note || '', source: source(ctx), created_ms: ctx.now, touched_ms: ctx.now, deleted_ms: null,
     task_ids: joinIds(f.taskIds),
+    task_types: joinIds(f.taskTypes),
   };
 }
 function newBlock(ctx, f) {
@@ -505,19 +523,13 @@ function activeChanges(cfg, ids) {
   return changes;
 }
 
-// Les tâches qu'un morceau reçoit en s'ouvrant : toutes les actives, quel que soit son projet ; aucune
-// pour une pause.
-function linkIds(type, actives) {
-  return type === PAUSE ? [] : actives.map((t) => t.id);
-}
-
-// Nouvelle liste de tâches actives : réglages, et un compteur en marche qui bascule à l'instant de
-// l'action, même projet, même activité, avec la nouvelle liste. Le choix ne bouge pas.
-async function setActives(ctx, cfg, ids, at) {
+// Nouvelle liste de tâches actives (lignes) : réglages, et un compteur en marche qui bascule à
+// l'instant de l'action, même projet, même activité, avec la nouvelle liste. Le choix ne bouge pas.
+async function setActives(ctx, cfg, actives, at) {
   const run = await running(ctx.db);
   return [
-    ...activeChanges(cfg, ids),
-    ...(run ? await switchTo(ctx, run, run.project, typeOf(run), at, ids) : []),
+    ...activeChanges(cfg, actives.map((t) => t.id)),
+    ...(run ? await switchTo(ctx, run, run.project, typeOf(run), at, actives) : []),
   ];
 }
 
@@ -536,10 +548,11 @@ export const actions = {
     const type = requireType(p.type, run ? typeOf(run) : DEFAULT_TYPE);
     if (await byId(ctx.db, id)) return;
     const cfg = await settings(ctx.db);
-    // Le morceau reçoit toutes les tâches actives (aucune pour une pause), quel que soit son projet.
-    const taskIds = linkIds(type, await readActives(ctx.db, cfg));
+    // Le morceau reçoit toutes les tâches actives et leurs activités (rien pour une pause), quel que
+    // soit son projet.
+    const link = linkOf(type, await readActives(ctx.db, cfg));
     // Relancer ce qui tourne déjà n'est pas une action.
-    if (run && run.project === project && typeOf(run) === type && (run.task_ids ?? null) === joinIds(taskIds)) return;
+    if (run && run.project === project && typeOf(run) === type && (run.task_ids ?? null) === joinIds(link.taskIds) && (run.task_types ?? null) === joinIds(link.taskTypes)) return;
 
     let start = actionTime(ctx) - offset * 60000;
     const changes = [];
@@ -548,7 +561,7 @@ export const actions = {
       if (start - run.start_ms > MAX_SESSION_MS) fail(TOO_LONG);
       changes.push(change(run, { ...run, end_ms: start, touched_ms: ctx.now }));
     }
-    changes.push(change(null, newSession(ctx, { id, project, start, type, note, taskIds })));
+    changes.push(change(null, newSession(ctx, { id, project, start, type, note, ...link })));
     if (type !== PAUSE) changes.push(...choiceChanges(cfg, project, type));
     await commit(ctx, 'start', `${run ? 'Bascule' : 'Lancement'} ${project} · ${type} à ${clock(start)}`, changes);
   },
@@ -564,12 +577,11 @@ export const actions = {
     const project = p.project === undefined ? current.project : await requireProject(ctx, p.project);
     const type = requireType(p.type, current.type);
     if (type === PAUSE) fail('Pause n’est pas une activité à choisir.');
-    const taskIds = linkIds(type, await readActives(db, cfg));
     // Le choix visé est déjà le choix calculé : on n'écrit pas les réglages d'un choix par défaut.
     const same = project === current.project && type === current.type;
     await commit(ctx, 'select', `Choix ${project} · ${type}`, [
       ...(same ? [] : choiceChanges(cfg, project, type)),
-      ...(await switchTo(ctx, run, project, type, actionTime(ctx), taskIds)),
+      ...(await switchTo(ctx, run, project, type, actionTime(ctx), await readActives(db, cfg))),
     ]);
   },
 
@@ -706,7 +718,8 @@ export const actions = {
     await commit(ctx, 'addTask', `Tâche ajoutée : ${description}`, [change(null, task, 'tasks')]);
   },
 
-  // La tâche seulement : une tâche active ne tient pas le compteur sur son projet.
+  // Une tâche active ne tient pas le compteur sur son projet ; si son activité change, le morceau en
+  // cours se ferme et un autre s'ouvre avec les nouvelles activités (le passé garde les anciennes).
   async editTask(ctx, p) {
     const row = await requireLiveTask(ctx, p);
     const next = { ...row };
@@ -715,7 +728,13 @@ export const actions = {
     if (p.type !== undefined) next.type = requireTaskType(p.type, row.type);
     if (['description', 'project', 'type'].every((f) => next[f] === row[f])) return;
     next.touched_ms = ctx.now;
-    await commit(ctx, 'editTask', `Tâche modifiée : ${next.description}`, [change(row, next, 'tasks')]);
+    const changes = [change(row, next, 'tasks')];
+    const cfg = await settings(ctx.db);
+    const actives = await readActives(ctx.db, cfg);
+    if (next.type !== row.type && actives.some((t) => t.id === row.id)) {
+      changes.push(...(await setActives(ctx, cfg, actives.map((t) => (t.id === row.id ? next : t)), actionTime(ctx))));
+    }
+    await commit(ctx, 'editTask', `Tâche modifiée : ${next.description}`, changes);
   },
 
   async deleteTask(ctx, p) {
@@ -725,8 +744,8 @@ export const actions = {
     if (row.deleted_ms != null) return;
     const changes = [change(row, { ...row, deleted_ms: ctx.now, touched_ms: ctx.now }, 'tasks')];
     const cfg = await settings(ctx.db);
-    const ids = (await readActives(ctx.db, cfg)).map((t) => t.id);
-    if (ids.includes(row.id)) changes.push(...(await setActives(ctx, cfg, ids.filter((x) => x !== row.id), actionTime(ctx))));
+    const actives = await readActives(ctx.db, cfg);
+    if (actives.some((t) => t.id === row.id)) changes.push(...(await setActives(ctx, cfg, actives.filter((t) => t.id !== row.id), actionTime(ctx))));
     await commit(ctx, 'deleteTask', `Tâche supprimée : ${row.description}`, changes);
   },
 
@@ -759,8 +778,8 @@ export const actions = {
     const doneMs = actionTime(ctx);
     const doneDay = workDayKey(doneMs);
     const cfg = await settings(ctx.db);
-    const ids = (await readActives(ctx.db, cfg)).map((t) => t.id);
-    const changes = ids.includes(row.id) ? await setActives(ctx, cfg, ids.filter((x) => x !== row.id), doneMs) : [];
+    const actives = await readActives(ctx.db, cfg);
+    const changes = actives.some((t) => t.id === row.id) ? await setActives(ctx, cfg, actives.filter((t) => t.id !== row.id), doneMs) : [];
     // Début = le premier morceau passé dessus (le morceau fermé par cette validation compris).
     const first = (await linkedSessions(ctx.db, row.created_ms)).find((s) => idsOf(s.task_ids).includes(row.id));
     const startedMs = first && first.start_ms <= doneMs ? first.start_ms : null;
@@ -788,13 +807,13 @@ export const actions = {
     const row = await requireLiveTask(ctx, p);
     if (row.done_ms != null) fail('Cette tâche est déjà validée.');
     const cfg = await settings(ctx.db);
-    const ids = (await readActives(ctx.db, cfg)).map((t) => t.id);
-    if (ids.includes(row.id)) return;
-    if (ids.length >= MAX_ACTIVE) fail(`${MAX_ACTIVE} tâches en cours au plus : valide ou désactive-en une d’abord.`);
-    const next = [...ids, row.id];
+    const actives = await readActives(ctx.db, cfg);
+    if (actives.some((t) => t.id === row.id)) return;
+    if (actives.length >= MAX_ACTIVE) fail(`${MAX_ACTIVE} tâches en cours au plus : valide ou désactive-en une d’abord.`);
+    const next = [...actives, row];
     const type = typeOf(row);
     await commit(ctx, 'activateTask', `Tâche activée : ${row.description}`, [
-      ...activeChanges(cfg, next),
+      ...activeChanges(cfg, next.map((t) => t.id)),
       ...choiceChanges(cfg, row.project, type),
       ...(await switchTo(ctx, await running(ctx.db), row.project, type, actionTime(ctx), next)),
     ]);
@@ -806,7 +825,7 @@ export const actions = {
     const actives = await readActives(ctx.db, cfg);
     const gone = p.id === undefined || p.id === null ? actives : actives.filter((t) => t.id === p.id);
     if (!gone.length) return;
-    const next = actives.filter((t) => !gone.includes(t)).map((t) => t.id);
+    const next = actives.filter((t) => !gone.includes(t));
     const summary = gone.length === 1 ? `Tâche désactivée : ${gone[0].description}` : `${gone.length} tâches désactivées`;
     await commit(ctx, 'deactivateTask', summary, await setActives(ctx, cfg, next, actionTime(ctx)));
   },

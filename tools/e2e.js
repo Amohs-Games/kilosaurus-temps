@@ -287,7 +287,7 @@ async function main() {
   await page.waitFor('document.querySelector(".sync-ok") && document.querySelector(".active-task") && /Prototype du dash/.test((document.querySelector(".toptask") || {}).textContent || "")', 'tâche en cours, la suivante en haut');
   s = await api(P, { ...me, action: 'status' });
   check(JSON.stringify(s.activeTasks) === '["e2e-a"]' && s.choice.project === 'Proto' && s.choice.type === 'Social' && s.running === null, 'serveur : tâche activée, le choix la suit, rien ne se lance');
-  check(await page.evaluate('[...document.querySelectorAll(".block-title")].map((h) => h.textContent).join().includes("En cours") && !!document.querySelector(".types")'), 'section « En cours », la rangée Activité reste');
+  check(await page.evaluate('[...document.querySelectorAll(".block-title")].map((h) => h.textContent).join().includes("En cours") && !document.querySelector(".types")'), 'section « En cours », la rangée Activité disparaît');
   await page.click('.toptask [data-act="taskActivate"]');
   await page.waitFor('document.querySelector(".sync-ok") && document.querySelectorAll(".active-task").length === 2', 'deux tâches en cours');
   s = await api(P, { ...me, action: 'status' });
@@ -298,6 +298,8 @@ async function main() {
   s = await api(P, { ...me, action: 'status' });
   check(s.running?.project === 'Heirfall' && JSON.stringify(s.running?.tasks) === '["e2e-a","e2e-b"]', 'serveur : ▶ part avec les deux tâches');
   check(await page.evaluate('[...document.querySelectorAll("[data-spent]")].length === 2 && [...document.querySelectorAll("[data-spent]")].every((e) => /^\\d+:\\d\\d:\\d\\d$/.test(e.textContent))'), 'chaque tâche en cours montre son temps');
+  check(await page.evaluate('[...document.querySelectorAll(".hero-pills .pill")].map((p) => p.textContent).join() === "Social,Art" && !document.querySelector(".hero-project .pill")'), 'deux activités en cours : leurs deux pastilles sous le projet');
+  check(await page.evaluate('(() => { const m = document.querySelector("#timeline .seg-multi"); return !!m && m.querySelectorAll("i").length === 2; })()'), 'frise : le morceau à deux activités se dessine en deux bandes empilées');
   await page.shot('01b-taches-en-cours');
   // Double clic réel sur ✓ de la première : une seule validation, même si la seconde prend sa place.
   const box = await page.evaluate('(() => { const r = document.querySelector("[data-act=taskValidate]").getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()');
@@ -309,6 +311,7 @@ async function main() {
   s = await api(P, { ...me, action: 'status' });
   check(s.tasks.find((t) => t.id === 'e2e-a')?.done && !s.tasks.find((t) => t.id === 'e2e-b')?.done, 'double clic sur ✓ : une seule tâche validée');
   check(JSON.stringify(s.activeTasks) === '["e2e-b"]' && s.running?.project === 'Heirfall' && JSON.stringify(s.running?.tasks) === '["e2e-b"]', 'serveur : le compteur continue avec l’autre tâche');
+  check(await page.evaluate('!document.querySelector(".hero-pills") && document.querySelector(".hero-project .pill").textContent === "Art"'), 'une seule activité en cours : sa pastille à côté du projet');
   await sleep(700); // un clic dans les 600 ms qui suivent une validation est ignoré
   await page.click('[data-act="taskDeactivate"]');
   await page.waitFor('document.querySelector(".sync-ok") && !document.querySelector(".active-task") && document.querySelector(".toptask")', 'plus de tâche en cours');

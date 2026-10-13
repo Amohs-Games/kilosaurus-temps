@@ -3,6 +3,10 @@
 > Remplace, dans `2026-10-12-taches-actives-design.md`, la tâche active unique et la règle du lien
 > (§ 2, § 3, § 5). Le reste tient : une tâche montrée ne pilote rien, le temps d'une tâche est la
 > somme des morceaux passés dessus, la mini-fenêtre ouvre le panneau chez elle.
+>
+> **Remplacée en partie** par `2026-10-13-activites-paralleles-design.md` : une tâche ne reçoit plus
+> le temps entier d'un morceau mais sa part (le temps est partagé entre les tâches au calcul, jamais
+> en base), et la rangée Activité disparaît quand des tâches sont en cours.
 
 ## Objectif
 

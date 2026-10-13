@@ -12,6 +12,7 @@
 const ENTRY_COLUMNS = {
   id: 'text', project: 'text', kind: 'text', day: 'text', start_ms: 'int', end_ms: 'int', hours: 'real',
   type: 'text', note: 'text', source: 'text', created_ms: 'int', touched_ms: 'int', deleted_ms: 'int', task_ids: 'text',
+  task_types: 'text',
 };
 
 const TASK_COLUMNS = {

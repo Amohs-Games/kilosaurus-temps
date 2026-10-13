@@ -495,3 +495,12 @@ html.mini .tasks .primary, html.mini .tasks .danger { min-height: 40px; font-siz
    sa hauteur maximale, le contenu défile encore à la molette. */
 html.mini { scrollbar-width: none; overflow-x: hidden; }
 html.mini::-webkit-scrollbar, html.mini body::-webkit-scrollbar { display: none; }
+
+/* Plusieurs activités en cours (une par tâche en cours) : leurs pastilles sur une ligne sous le projet. */
+.hero-pills { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: -2px; font-size: 17px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; }
+html.mini .hero-pills { font-size: 12px; gap: 4px; }
+
+/* Frise : un morceau à plusieurs activités se dessine en bandes empilées, une par activité, de hauteur
+   égale à sa part du temps. */
+.seg.seg-multi { display: flex; flex-direction: column; overflow: hidden; }
+.seg-multi i { display: block; min-height: 2px; }
