@@ -28,8 +28,9 @@ CREATE TABLE IF NOT EXISTS entries (
   created_ms INTEGER NOT NULL,
   touched_ms INTEGER NOT NULL,       -- dernière écriture : fait le « dernier log »
   deleted_ms INTEGER,
-  task_id TEXT,                      -- tâche sur laquelle la session a tourné (vide : aucune) ; dernière
-                                     -- colonne, comme l'a ajoutée server/migrations/2026-10-12-taches-actives.sql
+  task_ids TEXT,                     -- tâches actives pendant la session, ids séparés par des virgules (vide :
+                                     -- aucune) ; dernière colonne, comme l'ont faite server/migrations/
+                                     -- 2026-10-12-taches-actives.sql puis 2026-10-13-taches-paralleles.sql
   CHECK (kind <> 'session' OR (start_ms IS NOT NULL AND hours IS NULL)),
   CHECK (kind <> 'block' OR (start_ms IS NULL AND end_ms IS NULL AND hours > 0)),
   CHECK (end_ms IS NULL OR (end_ms >= start_ms AND end_ms - start_ms <= 86400000))
@@ -41,7 +42,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS one_running ON entries (kind)
 CREATE INDEX IF NOT EXISTS entries_day ON entries (day);
 CREATE INDEX IF NOT EXISTS entries_start ON entries (start_ms);
 CREATE INDEX IF NOT EXISTS entries_touched ON entries (touched_ms);
-CREATE INDEX IF NOT EXISTS entries_task ON entries (task_id);
 
 -- Liste de tâches. Une suppression est douce : deleted_ms. done_day : jour de travail de la coche.
 CREATE TABLE IF NOT EXISTS tasks (
@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS archive_entries (
   created_ms INTEGER NOT NULL,
   touched_ms INTEGER NOT NULL,
   deleted_ms INTEGER,
-  task_id TEXT,
+  task_ids TEXT,
   PRIMARY KEY (archived_day, id)
 );
 

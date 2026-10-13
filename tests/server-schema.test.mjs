@@ -118,21 +118,26 @@ test('base : tâches figées, ni modifiées ni effacées', () => {
   db.exec(SCHEMA);
 });
 
-test('migration 2026-10-12 : une base d’avant reçoit task_id au même rang qu’une base neuve', () => {
+test('migrations 2026-10-12 puis 2026-10-13 : une base d’avant arrive à la même forme qu’une base neuve, liens gardés', () => {
   const { DatabaseSync } = process.getBuiltinModule('node:sqlite');
-  const migration = readFileSync(new URL('../server/migrations/2026-10-12-taches-actives.sql', import.meta.url), 'utf8');
-  // Le schéma d'avant : sans la colonne ni son index.
-  const before = SCHEMA.replace(/^[ \t]*task_id TEXT,[^\n]*\n([ \t]*--[^\n]*\n)?/gm, '').replace(/^CREATE INDEX IF NOT EXISTS entries_task[^\n]*\n/m, '');
-  assert.ok(!/task_id/.test(before), 'schéma d’avant reconstruit');
+  const migration = (name) => readFileSync(new URL(`../server/migrations/${name}.sql`, import.meta.url), 'utf8');
+  // Le schéma d'avant les tâches actives : sans la colonne des tâches.
+  const before = SCHEMA.replace(/^[ \t]*task_ids TEXT,[^\n]*\n([ \t]*--[^\n]*\n)*/gm, '');
+  assert.ok(!/task_/.test(before), 'schéma d’avant reconstruit');
   const old = new DatabaseSync(':memory:');
   old.exec(before);
-  old.exec(migration);
-  old.exec(SCHEMA); // db:schema après la migration : rien ne casse
+  old.exec(migration('2026-10-12-taches-actives'));
+  // Une session liée par la première version (une seule tâche) garde sa tâche.
+  insertRow(old, { id: 'lie', start_ms: at('2026-10-01T09:00:00+02:00'), end_ms: at('2026-10-01T10:00:00+02:00') });
+  old.prepare("UPDATE entries SET task_id = 'T1' WHERE id = 'lie'").run();
+  old.exec(migration('2026-10-13-taches-paralleles'));
+  old.exec(SCHEMA); // db:schema après les migrations : rien ne casse
   const fresh = makeDb();
   const cols = (db, table) => db.prepare(`PRAGMA table_info(${table})`).all().map((c) => `${c.name}:${c.type}`);
   for (const table of ['entries', 'archive_entries']) {
     assert.deepEqual(cols(old, table), cols(fresh, table), table);
-    assert.equal(cols(fresh, table).at(-1), 'task_id:TEXT', `${table} : task_id en dernier`);
+    assert.equal(cols(fresh, table).at(-1), 'task_ids:TEXT', `${table} : task_ids en dernier`);
   }
-  assert.ok(old.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'entries_task'").get());
+  assert.equal(old.prepare("SELECT task_ids FROM entries WHERE id = 'lie'").get().task_ids, 'T1');
+  assert.equal(old.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'entries_task'").get(), undefined);
 });

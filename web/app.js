@@ -11,7 +11,7 @@
 
   var L = window.KTLogic;
   var API = window.KT_API_URL;
-  var VERSION = '2.1.0';
+  var VERSION = '2.2.0';
   var TIMEOUT_MS = 10000; // le serveur répond en quelques centaines de ms ; au-delà, c'est le réseau.
   var POLL_MS = 20000;    // relecture de l'état quand la page est visible (compteur lancé ailleurs)
   var RETRY_MS = 30000;
@@ -329,11 +329,12 @@
       if (!tasksBusy()) paintTasks();
       return;
     }
-    // Haut en bas = ordre d'usage : la tâche du haut, ce qui tourne, choisir un projet, lancer, l'activité
-    // (ou la tâche active, qui la remplace), la journée, après coup.
-    var active = L.activeTaskOf(s);
+    // Haut en bas = ordre d'usage : la tâche du haut, ce qui tourne, choisir un projet, lancer, les
+    // tâches en cours, l'activité, la journée, après coup.
+    var actives = L.activeTasksOf(s);
     app.innerHTML = header(s) + backupBanner(s) + topTaskLine(s) + hero(s) +
-      (active ? section('Tâche en cours', activeTaskCard(s, active)) : section('Activité', typeBar(s))) +
+      (actives.length ? section('En cours', activeTasksHtml(s, actives)) : '') +
+      section('Activité', typeBar(s)) +
       section('Ajouter un bloc d’heures', blocks(), 'add') +
       todayView(s);
     tick();
@@ -467,14 +468,15 @@
     return html;
   }
 
-  // La tâche du haut de la liste, au-dessus du compteur : ▶ l'active, un appui ailleurs ouvre le panneau
-  // Tâches. Sans tâche à faire, ou quand une tâche est active (sa carte est plus bas), un bouton vers le
-  // panneau.
+  // La première tâche à faire qui n'est pas en cours, au-dessus du compteur : ▶ l'active, un appui
+  // ailleurs ouvre le panneau Tâches. S'il n'y en a pas, un bouton vers le panneau.
   function topTaskLine(s) {
-    var t = L.topTask(s);
-    if (!t || L.activeTaskOf(s)) {
+    var actives = L.activeTasksOf(s);
+    var todo = L.todoTasks(s);
+    var t = todo.filter(function (x) { return actives.indexOf(x) < 0; })[0];
+    if (!t) {
       var done = L.doneTasks(s, Date.now()).length;
-      return '<button class="tasks-link" data-act="openTasks">' + (t ? 'Tâches' : '+ Tâches') + (done ? ' · ' + done + (done > 1 ? ' faites' : ' faite') : '') + '</button>';
+      return '<button class="tasks-link" data-act="openTasks">' + (todo.length ? 'Tâches' : '+ Tâches') + (done ? ' · ' + done + (done > 1 ? ' faites' : ' faite') : '') + '</button>';
     }
     return '<div class="toptask" data-act="openTasks">' +
       '<button class="activate" data-act="taskActivate" data-id="' + esc(t.id) + '" aria-label="Activer la tâche">' + ICON.play + '</button>' +
@@ -483,20 +485,22 @@
       '<span class="tt-chev" aria-hidden="true">›</span></div>';
   }
 
-  // La tâche active, à la place de la rangée Activité : le temps passé dessus en direct, Valider et
-  // Désactiver.
-  function activeTaskCard(s, t) {
-    return '<div class="active-task">' +
-      '<div class="at-desc">' + esc(t.description) + '</div>' +
-      '<small class="at-meta">' + esc(t.project) + ' · ' + esc(L.typeOf(t)) + '</small>' +
-      '<div class="at-time" id="task-spent">' + taskSpentText(s, t) + '</div>' +
-      '<div class="actions"><button class="secondary" data-act="taskDeactivate">Désactiver</button>' +
-      '<button class="validate" data-act="taskValidate" data-id="' + esc(t.id) + '">✓ Valider</button></div>' +
-      '</div>';
+  // Les tâches en cours, au-dessus de la rangée Activité : une ligne chacune, le temps passé dessus en
+  // direct, ✓ (valider) et ✕ (désactiver).
+  function activeTasksHtml(s, actives) {
+    return '<div class="active-tasks">' + actives.map(function (t) {
+      return '<div class="active-task">' +
+        '<span class="at-main"><span class="at-desc">' + esc(t.description) + '</span>' +
+        '<small class="at-meta">' + esc(t.project) + ' · ' + esc(L.typeOf(t)) + '</small></span>' +
+        '<span class="at-time" data-spent="' + esc(t.id) + '">' + taskSpentText(s, t) + '</span>' +
+        '<button class="validate" data-act="taskValidate" data-id="' + esc(t.id) + '" aria-label="Valider">✓</button>' +
+        '<button class="unactivate" data-act="taskDeactivate" data-id="' + esc(t.id) + '" aria-label="Désactiver">✕</button>' +
+        '</div>';
+    }).join('') + '</div>';
   }
 
   function taskSpentText(s, t) {
-    return L.elapsed(L.taskSpentMs(s, t, Date.now())) + ' sur cette tâche';
+    return L.elapsed(L.taskSpentMs(s, t, Date.now()));
   }
 
   // Le sélecteur : une ligne de petits boutons de projet. Toucher un projet change le choix (et
@@ -537,9 +541,12 @@
       var sp = document.getElementById('session-pause');
       if (sp) sp.textContent = sessionPauseText(session);
     }
-    var spent = document.getElementById('task-spent');
-    var active = L.activeTaskOf(state.status);
-    if (spent && active) spent.textContent = taskSpentText(state.status, active);
+    if (state.status) {
+      L.activeTasksOf(state.status).forEach(function (t) {
+        var el = document.querySelector('[data-spent="' + t.id.replace(/["\\]/g, '\\$&') + '"]');
+        if (el) el.textContent = taskSpentText(state.status, t);
+      });
+    }
     var total = document.getElementById('today-total');
     if (total && state.status) total.textContent = L.duration(L.todayTotal(state.status.today, Date.now()));
     var pause = document.getElementById('today-pause');
@@ -653,7 +660,7 @@
       else closeDialog();
     },
     taskActivate: function (el) { act('activateTask', { id: el.dataset.id }); },
-    taskDeactivate: function () { act('deactivateTask', {}); },
+    taskDeactivate: function (el) { act('deactivateTask', { id: el.dataset.id }); },
     taskValidate: function (el, e) { if (checkAllowed(e)) act('checkTask', { id: el.dataset.id }); },
     taskAdd: function () {
       var c = currentChoice();
@@ -1142,11 +1149,11 @@
     if (state.tasks.form) return taskFormHtml(s, state.tasks.form);
     var todo = L.todoTasks(s);
     var done = L.doneTasks(s, Date.now());
-    var active = L.activeTaskOf(s);
+    var actives = L.activeTasksOf(s);
     return '<div class="tasks">' +
       '<div class="tasks-head"><h2>Tâches</h2><button class="icon" data-act="tasksClose" aria-label="Fermer">✕</button></div>' +
       (todo.length ? '<ul class="task-list">' + todo.map(function (t) {
-        var isActive = active === t;
+        var isActive = actives.indexOf(t) >= 0;
         return '<li class="task task-todo' + (isActive ? ' task-active' : '') + '" data-id="' + esc(t.id) + '">' +
           '<button class="grip" aria-label="Déplacer">≡</button>' +
           '<button class="check" data-act="taskCheck" data-id="' + esc(t.id) + '" aria-label="Valider"></button>' +

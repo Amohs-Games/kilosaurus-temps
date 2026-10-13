@@ -303,7 +303,7 @@ test('un ancien état sans tasks ni choice ne casse rien', () => {
   assert.deepEqual(L.todoTasks(s), []);
   assert.deepEqual(L.doneTasks(s), []);
   assert.equal(L.topTask(s), null);
-  assert.equal(L.activeTaskOf(s), null);
+  assert.deepEqual(L.activeTasksOf(s), []);
   for (const action of ['checkTask', 'uncheckTask', 'deleteTask', 'editTask', 'activateTask', 'deactivateTask']) {
     assert.doesNotThrow(() => L.applyLocal(s, { action, params: { id: 'x' }, clientTime: T1 }));
   }
@@ -348,7 +348,7 @@ test('addTask : ni choix ni compteur touchés', () => {
   assert.deepEqual(s.tasks, [{ id: 'a', description: 'Appel avec Léa', project: 'Studio', type: 'Social', position: 1, done: null, started: null, spentMs: 0 }]);
   assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Misc' });
   assert.equal(s.running, null);
-  assert.equal(L.activeTaskOf(s), null);
+  assert.deepEqual(L.activeTasksOf(s), []);
 });
 
 test('addTask : défaut = le choix ; Pause, doublon et description vide refusés', () => {
@@ -384,78 +384,105 @@ test('valider, déplacer, supprimer, dévalider une tâche non active : ni choix
   assert.deepEqual(todoIds(s), ['A', 'C']);
 });
 
-test('activateTask arrêté : le choix devient la tâche, rien ne se lance ; ▶ part sur elle', () => {
+const activeIds = (s) => L.activeTasksOf(s).map((t) => t.id);
+
+test('activateTask arrêté : le choix devient la tâche, rien ne se lance ; ▶ part avec elle', () => {
   let s = act(withTasks(), 'addTask', { id: 'A', description: 'A', project: 'Studio', type: 'Social' }, T0);
   s = act(s, 'activateTask', { id: 'A' }, T1);
-  assert.equal(s.activeTask, 'A');
+  assert.deepEqual(activeIds(s), ['A']);
   assert.deepEqual(s.choice, { project: 'Studio', type: 'Social' });
   assert.equal(s.running, null);
   s = act(s, 'start', { id: 'r', project: 'Studio', type: 'Social' }, T1);
-  assert.equal(s.running.task, 'A');
+  assert.deepEqual(s.running.tasks, ['A']);
   assert.equal(act(s, 'activateTask', { id: 'A' }, T2), s, 'déjà active : sans effet');
 });
 
-test('activateTask en marche, même projet et même activité : nouveau morceau lié à la même seconde', () => {
-  let s = act(withTasks(), 'addTask', { id: 'A', description: 'A', project: 'Fluffy', type: 'Dev' }, T0);
-  s = act(s, 'start', { id: 'r', project: 'Fluffy', type: 'Dev' }, T0);
-  s = act(s, 'activateTask', { id: 'A' }, T1);
-  assert.equal(s.last.id, 'r');
-  assert.equal(s.last.end, new Date(T1).toISOString());
-  assert.equal(s.running.start, new Date(T1).toISOString());
-  assert.equal(s.running.task, 'A');
-  assert.equal(s.running.type, 'Dev');
+test('deux tâches actives une heure : chacune reçoit l’heure entière ; la dernière activée donne le choix', () => {
+  let s = act(twoTasksRunning(), 'activateTask', { id: 'A' }, T0);
+  s = act(s, 'activateTask', { id: 'B' }, T0);
+  assert.deepEqual(activeIds(s), ['A', 'B']);
+  assert.deepEqual(s.running.tasks, ['A', 'B']);
+  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Art' });
+  s = act(s, 'stop', {}, T2);
+  assert.equal(s.tasks.find((t) => t.id === 'A').spentMs, 60 * 60000);
+  assert.equal(s.tasks.find((t) => t.id === 'B').spentMs, 60 * 60000);
 });
 
-test('pause garde la tâche ; REPRENDRE repart dessus ; STOP la garde', () => {
+test('activer une tâche de plus en marche : nouveau morceau avec la liste, même seconde', () => {
+  let s = act(twoTasksRunning(), 'activateTask', { id: 'B' }, T0);
+  s = act(s, 'activateTask', { id: 'A' }, T1);
+  assert.equal(s.last.end, new Date(T1).toISOString());
+  assert.deepEqual(s.last.tasks, ['B']);
+  assert.deepEqual([s.running.project, s.running.type, s.running.start], ['Studio', 'Social', new Date(T1).toISOString()]);
+  assert.deepEqual(s.running.tasks, ['B', 'A']);
+});
+
+test('changer de projet ou d’activité, ou un start ailleurs, ne désactive rien', () => {
+  let s = act(twoTasksRunning(), 'activateTask', { id: 'A' }, T0);
+  s = act(s, 'activateTask', { id: 'B' }, T0);
+  const other = act(s, 'select', { project: 'Jam', type: 'Dev' }, T1);
+  assert.deepEqual(activeIds(other), ['A', 'B']);
+  assert.deepEqual([other.running.project, other.running.type], ['Jam', 'Dev']);
+  assert.deepEqual(other.running.tasks, ['A', 'B']);
+  const widget = act(act(s, 'stop', {}, T1), 'start', { id: 'w', project: 'Studio', type: 'Writing' }, T1);
+  assert.deepEqual(activeIds(widget), ['A', 'B']);
+  assert.deepEqual(widget.running.tasks, ['A', 'B']);
+});
+
+test('pause : aucune tâche ; REPRENDRE repart avec toutes ; STOP les garde', () => {
   let s = act(twoTasksRunning(), 'activateTask', { id: 'A' }, T0);
   s = act(s, 'start', { id: 'p', project: 'Studio', type: 'Pause' }, T1);
-  assert.equal(s.activeTask, 'A');
-  assert.equal(s.running.task, null);
+  assert.deepEqual(activeIds(s), ['A']);
+  assert.deepEqual(s.running.tasks, []);
   s = act(s, 'start', { id: 'r', project: 'Studio', type: 'Social' }, T1);
-  assert.equal(s.running.task, 'A');
+  assert.deepEqual(s.running.tasks, ['A']);
   s = act(s, 'stop', {}, T2);
-  assert.equal(s.activeTask, 'A');
+  assert.deepEqual(activeIds(s), ['A']);
 });
 
-test('un autre projet, une autre activité ou un start ailleurs désactivent la tâche', () => {
-  let s = act(twoTasksRunning(), 'activateTask', { id: 'A' }, T0);
-  assert.equal(act(s, 'select', { project: 'Studio' }, T1).activeTask, 'A', 'même choix : la tâche reste');
-  const other = act(s, 'select', { project: 'Jam' }, T1);
-  assert.equal(other.activeTask, null);
-  assert.equal(other.running.project, 'Jam');
-  assert.equal(other.running.task, null);
-  assert.equal(act(s, 'select', { type: 'Dev' }, T1).activeTask, null);
-  assert.equal(act(s, 'start', { id: 'w', project: 'Studio', type: 'Writing' }, T1).activeTask, null);
+test('10 tâches en cours au plus', () => {
+  let s = withTasks();
+  for (let i = 0; i < 11; i += 1) s = act(s, 'addTask', { id: 't' + i, description: 't' + i }, T0);
+  for (let i = 0; i < 10; i += 1) s = act(s, 'activateTask', { id: 't' + i }, T0);
+  assert.equal(activeIds(s).length, 10);
+  assert.equal(act(s, 'activateTask', { id: 't10' }, T1), s);
 });
 
-test('valider la tâche active en marche : le compteur continue sans tâche, même seconde ; le temps est crédité', () => {
+test('valider une tâche en cours : elle sort de la liste, le compteur continue avec les autres ; temps crédité', () => {
   let s = act(twoTasksRunning(), 'activateTask', { id: 'A' }, T0);
+  s = act(s, 'activateTask', { id: 'B' }, T0);
   s = act(s, 'checkTask', { id: 'A' }, T2);
-  assert.equal(s.activeTask, null);
-  assert.deepEqual(s.choice, { project: 'Studio', type: 'Social' });
-  assert.deepEqual([s.running.project, s.running.type, s.running.task, s.running.start], ['Studio', 'Social', null, new Date(T2).toISOString()]);
+  assert.deepEqual(activeIds(s), ['B']);
+  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Art' });
+  assert.deepEqual([s.running.project, s.running.type, s.running.start], ['Fluffy', 'Art', new Date(T2).toISOString()]);
+  assert.deepEqual(s.running.tasks, ['B']);
   const a = s.tasks.find((t) => t.id === 'A');
   assert.equal(a.done, new Date(T2).toISOString());
   assert.equal(a.started, new Date(T0).toISOString());
   assert.equal(a.spentMs, 60 * 60000);
 });
 
-test('deactivateTask : le choix reste, le compteur continue sans lien ; sans tâche active, sans effet', () => {
-  let s = act(twoTasksRunning(), 'activateTask', { id: 'B' }, T0);
-  s = act(s, 'deactivateTask', {}, T1);
-  assert.equal(s.activeTask, null);
+test('deactivateTask { id } : celle-là ; sans id : toutes ; le choix reste ; rien à retirer : sans effet', () => {
+  let s = act(twoTasksRunning(), 'activateTask', { id: 'A' }, T0);
+  s = act(s, 'activateTask', { id: 'B' }, T0);
+  s = act(s, 'deactivateTask', { id: 'A' }, T1);
+  assert.deepEqual(activeIds(s), ['B']);
   assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Art' });
-  assert.deepEqual([s.running.type, s.running.task, s.running.start], ['Art', null, new Date(T1).toISOString()]);
+  assert.deepEqual([s.running.tasks, s.running.start], [['B'], new Date(T1).toISOString()]);
+  assert.equal(act(s, 'deactivateTask', { id: 'A' }, T2), s);
+  s = act(s, 'deactivateTask', {}, T2);
+  assert.deepEqual(activeIds(s), []);
+  assert.deepEqual(s.running.tasks, []);
   assert.equal(act(s, 'deactivateTask', {}, T2), s);
 });
 
-test('editTask de la tâche active : le choix suit, le compteur bascule et garde le lien', () => {
+test('editTask d’une tâche en cours : ni le choix ni le compteur ne bougent', () => {
   let s = act(withTasks(), 'addTask', { id: 'A', description: 'A', project: 'Fluffy', type: 'Dev' }, T0);
   s = act(s, 'activateTask', { id: 'A' }, T0);
   s = act(s, 'start', { id: 'r', project: 'Fluffy', type: 'Dev' }, T0);
-  s = act(s, 'editTask', { id: 'A', type: 'Art' }, T1);
-  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Art' });
-  assert.deepEqual([s.running.type, s.running.task], ['Art', 'A']);
+  s = act(s, 'editTask', { id: 'A', project: 'Jam', type: 'Art' }, T1);
+  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Dev' });
+  assert.equal(s.running.id, 'r');
   assert.equal(act(s, 'editTask', { id: 'A', type: 'Pause' }).tasks[0].type, 'Art');
 });
 
@@ -470,11 +497,12 @@ test('editTask sans changement ou description seule : le choix ne bouge pas', ()
   assert.equal(act(s, 'editTask', { id: 'zzz', description: 'x' }).tasks.length, 1);
 });
 
-test('deleteTask de la tâche active : désactivée, le compteur continue sans lien', () => {
-  let s = act(twoTasksRunning(), 'activateTask', { id: 'B' }, T0);
+test('deleteTask d’une tâche en cours : elle sort de la liste, le compteur continue avec les autres', () => {
+  let s = act(twoTasksRunning(), 'activateTask', { id: 'A' }, T0);
+  s = act(s, 'activateTask', { id: 'B' }, T0);
   s = act(s, 'deleteTask', { id: 'B' }, T1);
-  assert.equal(s.activeTask, null);
-  assert.equal(s.running.task, null);
+  assert.deepEqual(activeIds(s), ['A']);
+  assert.deepEqual(s.running.tasks, ['A']);
   assert.deepEqual(todoIds(s), ['A']);
 });
 
@@ -504,7 +532,7 @@ test('uncheckTask : positions uniques, la tâche reprend sa place, non active, c
   assert.deepEqual(todoIds(s), ['A', 'C', 'B']);
   assert.deepEqual(L.todoTasks(s).map((t) => t.position), [1, 2, 3]);
   assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Misc' });
-  assert.equal(L.activeTaskOf(s), null);
+  assert.deepEqual(activeIds(s), []);
   assert.equal(s.tasks.find((t) => t.id === 'A').done, null);
   assert.equal(act(s, 'uncheckTask', { id: 'A' }, T2), s);
 });
@@ -517,26 +545,39 @@ test('compteur oublié (plus de 24 h) : l’activation change le choix, pas de b
   assert.equal(s.running.id, 'r');
 });
 
-test('temps d’une tâche : terminé (serveur) plus le morceau en cours lié ; un stop local ne le fait pas reculer', () => {
+test('temps d’une tâche : terminé (serveur) plus le morceau en cours qui la contient ; un stop local ne le fait pas reculer', () => {
   let s = Object.assign(withTasks(), {
-    activeTask: 'A',
+    activeTasks: ['A'],
     tasks: [{ id: 'A', description: 'A', project: 'Fluffy', type: 'Dev', position: 1, done: null, started: null, spentMs: 10 * 60000 }],
   });
-  s = act(s, 'start', { id: 'r', project: 'Fluffy', type: 'Dev' }, T0);
+  s = act(s, 'start', { id: 'r', project: 'Studio', type: 'Social' }, T0);
   const a = () => s.tasks[0];
-  assert.equal(L.taskSpentMs(s, a(), Date.parse(T1)), 40 * 60000);
+  assert.equal(L.taskSpentMs(s, a(), Date.parse(T1)), 40 * 60000, 'compte quel que soit le projet du compteur');
   s = act(s, 'stop', {}, T1);
   assert.equal(L.taskSpentMs(s, a(), Date.parse(T2)), 40 * 60000);
   assert.equal(L.taskSpentMs(s, null, Date.parse(T2)), 0);
 });
 
-test('un réglage actif qui vise une tâche validée vaut « aucune »', () => {
+test('état d’avant les tâches en parallèle (activeTask, running.task) : lu comme une liste d’une tâche', () => {
   const s = Object.assign(withTasks(), {
     activeTask: 'A',
-    tasks: [{ id: 'A', description: 'A', project: 'Fluffy', type: 'Dev', position: 1, done: T0, started: null, spentMs: 0 }],
+    running: { id: 'r', project: 'Fluffy', type: 'Dev', start: T0, end: null, task: 'A' },
+    tasks: [{ id: 'A', description: 'A', project: 'Fluffy', type: 'Dev', position: 1, done: null, started: null, spentMs: 0 }],
   });
-  assert.equal(L.activeTaskOf(s), null);
-  assert.equal(act(s, 'start', { id: 'r', project: 'Fluffy', type: 'Dev' }, T1).running.task, null);
+  assert.deepEqual(activeIds(s), ['A']);
+  assert.equal(L.taskSpentMs(s, s.tasks[0], Date.parse(T1)), 30 * 60000);
+});
+
+test('une liste qui vise une tâche validée l’ignore', () => {
+  const s = Object.assign(withTasks(), {
+    activeTasks: ['A', 'B'],
+    tasks: [
+      { id: 'A', description: 'A', project: 'Fluffy', type: 'Dev', position: 1, done: T0, started: null, spentMs: 0 },
+      { id: 'B', description: 'B', project: 'Fluffy', type: 'Dev', position: 2, done: null, started: null, spentMs: 0 },
+    ],
+  });
+  assert.deepEqual(activeIds(s), ['B']);
+  assert.deepEqual(act(s, 'start', { id: 'r', project: 'Fluffy', type: 'Dev' }, T1).running.tasks, ['B']);
 });
 
 test('les actions de tâche ne modifient pas l’état d’origine', () => {

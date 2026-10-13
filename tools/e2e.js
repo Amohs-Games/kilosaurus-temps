@@ -269,7 +269,7 @@ async function main() {
   check(await page.evaluate('document.querySelector(".pick.on").textContent') === 'Studio', 'un projet choisi mais masqué (Studio) est affiché plein dans le sélecteur');
   await api(P, { ...me, action: 'select', project: choiceBefore.project, type: choiceBefore.type });
 
-  console.log('Tâche du haut et tâche active');
+  console.log('Tâche du haut et tâches en cours');
   await api(P, { ...me, action: 'addTask', id: 'e2e-a', description: 'Répondre aux mails éditeur', project: 'Proto', type: 'Social' });
   await api(P, { ...me, action: 'addTask', id: 'e2e-b', description: 'Prototype du dash', project: 'Heirfall', type: 'Art' });
   await page.send('Page.navigate', { url: base + '/' });
@@ -277,35 +277,43 @@ async function main() {
   const topText = await page.evaluate('document.querySelector(".toptask").textContent');
   check(/Répondre aux mails éditeur/.test(topText) && /Proto · Social/.test(topText), 'la tâche du haut : description et « projet · activité »');
   s = await api(P, { ...me, action: 'status' });
-  check(s.activeTask === null && s.choice.project === choiceBefore.project && s.choice.type === choiceBefore.type, 'une tâche montrée ne pilote rien : le choix ne bouge pas');
+  check(s.activeTasks.length === 0 && s.choice.project === choiceBefore.project && s.choice.type === choiceBefore.type, 'une tâche montrée ne pilote rien : le choix ne bouge pas');
   check(await page.evaluate('!!document.querySelector(".toptask [data-act=taskActivate]") && !document.querySelector(".toptask .check")'), 'la tâche du haut a un bouton ▶ (Activer), plus de case');
   await page.shot('01a-accueil-tache');
   await page.click('.toptask .tt-main');
   await page.waitFor('document.querySelector("dialog[open] h2")', 'appui sur la ligne : panneau Tâches');
   await page.click('dialog [data-act="tasksClose"]');
   await page.click('.toptask [data-act="taskActivate"]');
-  await page.waitFor('document.querySelector(".sync-ok") && document.querySelector(".active-task")', 'carte de la tâche active');
+  await page.waitFor('document.querySelector(".sync-ok") && document.querySelector(".active-task") && /Prototype du dash/.test((document.querySelector(".toptask") || {}).textContent || "")', 'tâche en cours, la suivante en haut');
   s = await api(P, { ...me, action: 'status' });
-  check(s.activeTask === 'e2e-a' && s.choice.project === 'Proto' && s.choice.type === 'Social' && s.running === null, 'serveur : tâche activée, le choix la suit, rien ne se lance');
-  check(await page.evaluate('[...document.querySelectorAll(".block-title")].map((h) => h.textContent).join() .includes("Tâche en cours") && !document.querySelector(".types")'), 'la carte de la tâche remplace la rangée Activité');
-  check(await page.evaluate('!document.querySelector(".toptask") && !!document.querySelector(".tasks-link")'), 'tâche active : la ligne du haut devient le lien « Tâches »');
+  check(JSON.stringify(s.activeTasks) === '["e2e-a"]' && s.choice.project === 'Proto' && s.choice.type === 'Social' && s.running === null, 'serveur : tâche activée, le choix la suit, rien ne se lance');
+  check(await page.evaluate('[...document.querySelectorAll(".block-title")].map((h) => h.textContent).join().includes("En cours") && !!document.querySelector(".types")'), 'section « En cours », la rangée Activité reste');
+  await page.click('.toptask [data-act="taskActivate"]');
+  await page.waitFor('document.querySelector(".sync-ok") && document.querySelectorAll(".active-task").length === 2', 'deux tâches en cours');
+  s = await api(P, { ...me, action: 'status' });
+  check(JSON.stringify(s.activeTasks) === '["e2e-a","e2e-b"]' && s.choice.project === 'Heirfall', 'serveur : deux tâches en cours, la dernière activée donne le choix');
+  check(await page.evaluate('!document.querySelector(".toptask") && !!document.querySelector(".tasks-link")'), 'toutes les tâches en cours : la ligne du haut devient le lien « Tâches »');
   await page.click('[data-act="launch"]');
   await page.waitFor('document.querySelector(".sync-ok") && !document.querySelector(".hero.idle")', 'compteur lancé');
   s = await api(P, { ...me, action: 'status' });
-  check(s.running?.project === 'Proto' && s.running?.task === 'e2e-a', 'serveur : ▶ part sur la tâche active, le morceau est lié');
-  check(/sur cette tâche/.test(await page.evaluate('document.getElementById("task-spent").textContent')), 'la carte montre le temps passé sur la tâche');
-  await page.shot('01b-tache-active');
-  // Double clic réel sur Valider : une seule validation, le compteur continue sans tâche.
+  check(s.running?.project === 'Heirfall' && JSON.stringify(s.running?.tasks) === '["e2e-a","e2e-b"]', 'serveur : ▶ part avec les deux tâches');
+  check(await page.evaluate('[...document.querySelectorAll("[data-spent]")].length === 2 && [...document.querySelectorAll("[data-spent]")].every((e) => /^\\d+:\\d\\d:\\d\\d$/.test(e.textContent))'), 'chaque tâche en cours montre son temps');
+  await page.shot('01b-taches-en-cours');
+  // Double clic réel sur ✓ de la première : une seule validation, même si la seconde prend sa place.
   const box = await page.evaluate('(() => { const r = document.querySelector("[data-act=taskValidate]").getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()');
   for (const clickCount of [1, 2]) {
     await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: box.x, y: box.y, button: 'left', clickCount });
     await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: box.x, y: box.y, button: 'left', clickCount });
   }
-  await page.waitFor('document.querySelector(".sync-ok") && document.querySelector(".types") && /Prototype du dash/.test((document.querySelector(".toptask") || {}).textContent || "")', 'la rangée Activité revient, la suivante est en haut');
+  await page.waitFor('document.querySelector(".sync-ok") && document.querySelectorAll(".active-task").length === 1', 'une tâche en cours');
   s = await api(P, { ...me, action: 'status' });
-  check(s.tasks.find((t) => t.id === 'e2e-a')?.done && !s.tasks.find((t) => t.id === 'e2e-b')?.done, 'double clic sur Valider : une seule tâche validée');
-  check(s.activeTask === null && s.running?.project === 'Proto' && s.running?.type === 'Social' && s.running?.task === null, 'serveur : le compteur continue, même projet, sans tâche');
+  check(s.tasks.find((t) => t.id === 'e2e-a')?.done && !s.tasks.find((t) => t.id === 'e2e-b')?.done, 'double clic sur ✓ : une seule tâche validée');
+  check(JSON.stringify(s.activeTasks) === '["e2e-b"]' && s.running?.project === 'Heirfall' && JSON.stringify(s.running?.tasks) === '["e2e-b"]', 'serveur : le compteur continue avec l’autre tâche');
   await sleep(700); // un clic dans les 600 ms qui suivent une validation est ignoré
+  await page.click('[data-act="taskDeactivate"]');
+  await page.waitFor('document.querySelector(".sync-ok") && !document.querySelector(".active-task") && document.querySelector(".toptask")', 'plus de tâche en cours');
+  s = await api(P, { ...me, action: 'status' });
+  check(s.activeTasks.length === 0 && s.running?.project === 'Heirfall' && s.running?.tasks.length === 0, 'serveur : ✕ désactive, le compteur continue sans tâche');
   await page.click('[data-act="stop"]');
   await page.waitFor('document.querySelector(".hero.idle") && document.querySelector(".sync-ok")', 'arrêt');
   // Valider depuis le panneau, sans activer.
@@ -400,13 +408,13 @@ async function main() {
   await page.waitFor('document.querySelector(".sync-ok") && document.querySelector("dialog .task-active .task-live")', 'tâche marquée « en cours »');
   s = await api(P, { ...me, action: 'status' });
   const trois = s.tasks.find((t) => t.description === 'Tâche trois');
-  check(s.activeTask === trois.id && s.running?.project === 'Jam' && s.running?.type === 'Art' && s.running?.task === trois.id, 'serveur : activée depuis le panneau, le compteur bascule sur elle (Jam · Art)');
+  check(JSON.stringify(s.activeTasks) === JSON.stringify([trois.id]) && s.running?.project === 'Jam' && s.running?.type === 'Art' && JSON.stringify(s.running?.tasks) === JSON.stringify([trois.id]), 'serveur : activée depuis le panneau, le compteur bascule sur elle (Jam · Art)');
   await page.shot('12c-tache-active');
   await sleep(700);
   await page.evaluate('document.querySelector("dialog .task-active .check").click()');
   await page.waitFor('document.querySelector(".sync-ok") && !document.querySelector("dialog .task-active")', 'synchro');
   s = await api(P, { ...me, action: 'status' });
-  check(s.tasks.find((t) => t.description === 'Tâche trois')?.done && s.activeTask === null && s.running?.project === 'Jam' && s.running?.task === null, 'serveur : tâche active validée, le compteur continue sans elle');
+  check(s.tasks.find((t) => t.description === 'Tâche trois')?.done && s.activeTasks.length === 0 && s.running?.project === 'Jam' && s.running?.tasks.length === 0, 'serveur : tâche active validée, le compteur continue sans elle');
   check(await page.evaluate('document.querySelectorAll("dialog .task-done").length') === 3 && await page.evaluate('document.querySelector("dialog .task-done:last-child .task-desc").textContent') === 'Tâche trois', 'panneau : la tâche validée passe en bas de « Faites aujourd’hui »');
   await page.shot('12d-tache-validee');
   await sleep(700);

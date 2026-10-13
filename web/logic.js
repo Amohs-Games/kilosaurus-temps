@@ -175,6 +175,7 @@
   var MAX_SESSION_MS = 24 * HOUR;
   var MAX_DESCRIPTION = 200;
   var MAX_TODO = 30;
+  var MAX_ACTIVE = 10;
 
   // Une activité absente, null ou vide veut dire « pas donnée » (repli), comme sur le serveur.
   function typeOrFallback(value, fallback) {
@@ -233,40 +234,41 @@
     return null;
   }
 
-  // La tâche active : celle du serveur si elle est encore à faire, sinon aucune.
-  function activeTaskOf(s) {
-    var t = s && s.activeTask ? findTask(s, s.activeTask) : null;
-    return t && !t.done ? t : null;
+  // Les tâches en cours, dans l’ordre d’activation, encore à faire. Un état d’avant les tâches en
+  // parallèle n’a que `activeTask`.
+  function activeTasksOf(s) {
+    var ids = s && s.activeTasks ? s.activeTasks : (s && s.activeTask ? [s.activeTask] : []);
+    return ids.map(function (id) { return findTask(s, id); }).filter(function (t) { return t && !t.done; });
   }
+  function activeIdsOf(s) { return activeTasksOf(s).map(function (t) { return t.id; }); }
 
-  // Le lien d’un morceau qui s’ouvre sur (project, type) : la tâche active si elle a exactement ce projet
-  // et cette activité, sinon aucune.
-  function linkFor(s, project, type) {
-    var t = activeTaskOf(s);
-    return t && t.project === project && typeOf(t) === type ? t.id : null;
-  }
+  // Les tâches d’un morceau (un morceau d’avant les tâches en parallèle n’a que `task`).
+  function tasksOfRow(row) { return row.tasks || (row.task ? [row.task] : []); }
 
-  // Ferme le compteur en cours à `endIso`. Un morceau lié crédite sa tâche : le temps affiché ne recule
-  // pas avant la réponse du serveur.
+  // Ferme le compteur en cours à `endIso`. Un morceau crédite chacune de ses tâches du temps entier : le
+  // temps affiché ne recule pas avant la réponse du serveur.
   function closeRunning(s, endIso) {
     var run = s.running;
     run.end = endIso;
     run.hours = hoursBetween(run.start, endIso);
-    var t = run.task ? findTask(s, run.task) : null;
-    if (t) t.spentMs = (t.spentMs || 0) + Math.max(0, new Date(endIso).getTime() - new Date(run.start).getTime());
+    var ms = Math.max(0, new Date(endIso).getTime() - new Date(run.start).getTime());
+    tasksOfRow(run).forEach(function (id) {
+      var t = findTask(s, id);
+      if (t) t.spentMs = (t.spentMs || 0) + ms;
+    });
     s.last = run;
     upsertToday(s, run);
     s.running = null;
   }
 
-  // Bascule locale du compteur en marche vers (project, type, tâche liée) à l’instant `atMs`, dès que
-  // l’un des trois change. Rien sans compteur, en pause, déjà sur ce morceau, ou compteur oublié (plus
-  // de 24 h) : seul le choix change alors.
-  function switchRunning(s, project, type, atMs, taskId) {
+  // Bascule locale du compteur en marche vers (project, type, tâches) à l’instant `atMs`, dès que l’un
+  // des trois change. Rien sans compteur, en pause, déjà sur ce morceau, ou compteur oublié (plus de
+  // 24 h) : seul le choix change alors.
+  function switchRunning(s, project, type, atMs, ids) {
     var run = s.running;
-    taskId = taskId || null;
+    ids = ids || [];
     if (!run || isPause(run)) return;
-    if (run.project === project && typeOf(run) === type && (run.task || null) === taskId) return;
+    if (run.project === project && typeOf(run) === type && tasksOfRow(run).join() === ids.join()) return;
     var runStart = new Date(run.start).getTime();
     var start = Math.max(atMs, runStart);
     if (start - runStart > MAX_SESSION_MS) return;
@@ -274,16 +276,19 @@
     closeRunning(s, startIso);
     s.running = {
       id: 'local-' + start + '-' + project + '-' + type, project: project, type: type, date: dayKey(start), start: startIso,
-      end: null, hours: null, note: '', source: 'app', corrected: false, task: taskId,
+      end: null, hours: null, note: '', source: 'app', corrected: false, tasks: ids.slice(), task: ids.length ? ids[ids.length - 1] : null,
     };
     upsertToday(s, s.running);
   }
 
-  // Plus de tâche active : le choix reste ; un compteur en marche sur elle continue sans lien.
-  function deactivate(s, atMs) {
-    s.activeTask = null;
-    if (s.running) switchRunning(s, s.running.project, typeOf(s.running), atMs, null);
+  // Nouvelle liste de tâches en cours : le choix reste ; un compteur en marche continue, même projet,
+  // même activité, avec la nouvelle liste.
+  function setActives(s, ids, atMs) {
+    s.activeTasks = ids;
+    s.activeTask = ids.length ? ids[ids.length - 1] : null;
+    if (s.running) switchRunning(s, s.running.project, typeOf(s.running), atMs, ids);
   }
+  function without(ids, id) { return ids.filter(function (x) { return x !== id; }); }
 
   // Applique une action de tâche ou de choix à `s` (déjà copié). Renvoie false si l’action n’a pas lieu
   // (invalide ou sans effet), comme le serveur qui la refuse ou l’ignore.
@@ -292,22 +297,21 @@
     var atMs = item.clientTime ? new Date(item.clientTime).getTime() : Date.now();
     var action = item.action;
     var cur = choiceOf(s);
-    var active = activeTaskOf(s);
+    var actives = activeIdsOf(s);
     var task;
 
     if (action === 'select') {
       var project = p.project === undefined ? cur.project : p.project;
       var type = typeOrFallback(p.type, cur.type);
       if ((s.projects || []).indexOf(project) < 0 || isPauseType(type)) return false;
-      var link = linkFor(s, project, type);
       s.choice = { project: project, type: type };
-      if (active && !link) s.activeTask = null;
-      switchRunning(s, project, type, atMs, link);
+      switchRunning(s, project, type, atMs, actives);
       return true;
     }
     if (action === 'deactivateTask') {
-      if (!active) return false;
-      deactivate(s, atMs);
+      var rest = p.id === undefined || p.id === null ? [] : without(actives, p.id);
+      if (rest.length === actives.length) return false;
+      setActives(s, rest, atMs);
       return true;
     }
     if (!s.tasks) s.tasks = [];
@@ -339,26 +343,23 @@
         if (isPauseType(next.type)) return false;
       }
       if (next.description === task.description && next.project === task.project && next.type === task.type) return false;
-      var moved = next.project !== task.project || next.type !== task.type;
       task.description = next.description;
       task.project = next.project;
       task.type = next.type;
-      // La tâche active : le choix suit et le compteur bascule, lien gardé.
-      if (active === task && moved) {
-        s.choice = { project: task.project, type: typeOf(task) };
-        switchRunning(s, task.project, typeOf(task), atMs, task.id);
-      }
     } else if (action === 'deleteTask') {
       task = findTask(s, p.id);
       if (!task) return false;
-      if (active === task) deactivate(s, atMs);
+      if (actives.indexOf(task.id) >= 0) setActives(s, without(actives, task.id), atMs);
       s.tasks = s.tasks.filter(function (t) { return t !== task; });
     } else if (action === 'activateTask') {
+      // Rejoint les tâches en cours ; le compteur suit son projet et son activité, avec toute la liste.
       task = findTask(s, p.id);
-      if (!task || task.done || active === task) return false;
+      if (!task || task.done || actives.indexOf(task.id) >= 0 || actives.length >= MAX_ACTIVE) return false;
+      var ids = actives.concat([task.id]);
+      s.activeTasks = ids;
       s.activeTask = task.id;
       s.choice = { project: task.project, type: typeOf(task) };
-      switchRunning(s, task.project, typeOf(task), atMs, task.id);
+      switchRunning(s, task.project, typeOf(task), atMs, ids);
     } else if (action === 'moveTask') {
       task = findTask(s, p.id);
       var dest = p.before === undefined ? null : p.before;
@@ -375,15 +376,15 @@
       if (order.every(function (t, i) { return t === current[i]; })) return false;
       order.forEach(function (t, i) { t.position = i + 1; });
     } else if (action === 'checkTask') {
-      // Valider : la tâche active est désactivée, le compteur continue sans elle.
+      // Valider : une tâche en cours sort de la liste, le compteur continue avec les autres.
       task = findTask(s, p.id);
       if (!task || task.done) return false;
-      if (active === task) deactivate(s, atMs);
+      if (actives.indexOf(task.id) >= 0) setActives(s, without(actives, task.id), atMs);
       task.done = new Date(atMs).toISOString();
       // Début : le premier morceau du jour passé dessus (le serveur, qui voit tout l’historique, corrige).
       var first = null;
       (s.today || []).forEach(function (r) {
-        if (r.task === task.id && r.start && (!first || r.start < first)) first = r.start;
+        if (tasksOfRow(r).indexOf(task.id) >= 0 && r.start && (!first || r.start < first)) first = r.start;
       });
       task.started = first || task.started || null;
     } else if (action === 'uncheckTask') {
@@ -401,11 +402,11 @@
     return true;
   }
 
-  // Temps passé sur une tâche : ses morceaux terminés (serveur), plus le morceau en cours s’il est lié.
+  // Temps passé sur une tâche : ses morceaux terminés (serveur), plus le morceau en cours s’il la contient.
   function taskSpentMs(s, task, nowMs) {
     var ms = (task && task.spentMs) || 0;
     var run = s && s.running;
-    if (task && run && run.task === task.id) ms += Math.max(0, nowMs - new Date(run.start).getTime());
+    if (task && run && tasksOfRow(run).indexOf(task.id) >= 0) ms += Math.max(0, nowMs - new Date(run.start).getTime());
     return ms;
   }
 
@@ -421,10 +422,9 @@
 
     if (item.action === 'start') {
       var type = p.type ? canonicalType(p.type) : (s.running ? typeOf(s.running) : DEFAULT_TYPE);
-      // Une pause n’a pas de lien et garde la tâche active ; un autre projet ou une autre activité la
-      // désactivent.
-      var link = type === PAUSE_NAME ? null : linkFor(s, p.project, type);
-      if (s.running && s.running.project === p.project && typeOf(s.running) === type && (s.running.task || null) === link) return s;
+      // Le morceau reçoit toutes les tâches en cours, quel que soit son projet ; aucune pour une pause.
+      var ids = type === PAUSE_NAME ? [] : activeIdsOf(s);
+      if (s.running && s.running.project === p.project && typeOf(s.running) === type && tasksOfRow(s.running).join() === ids.join()) return s;
       var start = new Date(new Date(at).getTime() - (p.offsetMinutes || 0) * 60000);
       if (s.running) {
         var prevStart = new Date(s.running.start);
@@ -433,13 +433,10 @@
       }
       s.running = {
         id: p.id, project: p.project, type: type, date: dayKey(start), start: start.toISOString(), end: null,
-        hours: null, note: p.note || '', source: 'app', corrected: false, task: link,
+        hours: null, note: p.note || '', source: 'app', corrected: false, tasks: ids, task: ids.length ? ids[ids.length - 1] : null,
       };
       upsertToday(s, s.running);
-      if (type !== PAUSE_NAME) {
-        s.choice = { project: p.project, type: type };
-        if (!link) s.activeTask = null;
-      }
+      if (type !== PAUSE_NAME) s.choice = { project: p.project, type: type };
     } else if (item.action === 'stop') {
       if (!s.running) return s;
       if (p.endAt) s.running.corrected = true;
@@ -596,7 +593,7 @@
     elapsed: elapsed, duration: duration, clock: clock, dayLabel: dayLabel,
     entryEdit: entryEdit, isLong: isLong, forgotMax: forgotMax, visibleProjects: visibleProjects, pickableProjects: pickableProjects,
     isForgotten: isForgotten, applyLocal: applyLocal, todoTasks: todoTasks, doneTasks: doneTasks, topTask: topTask, choiceOf: choiceOf,
-    activeTaskOf: activeTaskOf, taskSpentMs: taskSpentMs,
+    activeTasksOf: activeTasksOf, taskSpentMs: taskSpentMs,
     typesOf: typesOf, typeOf: typeOf, typeColor: typeColor, textOn: textOn, projectColor: projectColor, isPause: isPause, todayPause: todayPause, sessionOf: sessionOf, PAUSE_TYPE: PAUSE_TYPE, rowHours: rowHours, todayTotal: todayTotal, todayWorked: todayWorked,
     dayTimeline: dayTimeline, weekRange: weekRange, monthRange: monthRange, aggregate: aggregate, recapMatches: recapMatches, backupWarnings: backupWarnings,
   };

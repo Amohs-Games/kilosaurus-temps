@@ -3,6 +3,9 @@
 > Remplace, dans `2026-10-08-taches-design.md`, la règle de la tâche du haut (§ 5) et le temps d'une
 > tâche calculé entre deux coches. Le reste de cette spec (liste, panneau, fiche, sauvegardes)
 > tient toujours.
+>
+> **Remplacée en partie** par `2026-10-13-taches-paralleles-design.md` : plusieurs tâches peuvent
+> être en cours à la fois, chacune reçoit le temps entier, et changer de projet ne désactive plus rien.
 
 ## Objectif
 

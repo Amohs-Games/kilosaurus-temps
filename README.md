@@ -145,16 +145,16 @@ Au premier lancement, l'app demande le code de l'appareil. Elle le garde ensuite
   plus : au-delà, ajouter ou décocher une tâche est refusé (« Liste pleine »).
   - **Une tâche montrée ne pilote rien** : ajouter, déplacer ou valider une tâche ne touche ni au
     choix ni au compteur. On peut très bien travailler sans tâche.
-  - **Tâche active** : l’activer met son projet et son activité au choix ; compteur en cours, il
-    bascule dessus à la même seconde. Elle remplace alors la rangée Activité par sa carte : le temps
-    passé dessus en direct, **Valider** et **Désactiver**. Pause, Reprendre, Stop puis ▶ la gardent :
-    le temps repris s’ajoute au sien. Toucher un autre projet la désactive.
-  - **Valider** la tâche active laisse le compteur tourner, même projet, même activité, sans tâche.
-  - **Temps d’une tâche** : chaque morceau de compteur garde la tâche sur laquelle il a tourné ; le
-    temps d’une tâche est leur somme, sur autant de jours qu’il faut. Corriger ou supprimer un morceau
-    corrige ce temps. Il s’affiche dans le panneau après « projet · activité ».
-  - Le ▶ du widget lance « dernier projet · Writing » : si ce n’est pas la tâche active, il la
-    désactive.
+  - **Tâches en cours** : on peut en activer plusieurs (10 au plus), pour mener plusieurs features en
+    parallèle. Activer une tâche met son projet et son activité au choix ; compteur en cours, il
+    bascule à la même seconde. La section **En cours**, au-dessus de la rangée Activité, liste chacune
+    avec son temps en direct, **✓** (valider) et **✕** (désactiver). Changer de projet ne désactive
+    rien ; Pause, Reprendre, Stop puis ▶ les gardent.
+  - **Temps d’une tâche** : chaque morceau de compteur garde la liste des tâches en cours pendant
+    qu’il tournait, et compte **entier pour chacune** : trois tâches en cours une heure reçoivent
+    chacune une heure (le total de la journée, lui, reste celui du compteur). Une pause ne compte pour
+    aucune. Corriger ou supprimer un morceau corrige ce temps. Il s’affiche dans le panneau après
+    « projet · activité ».
 - **Stop** : ferme le compteur. **+ note** : une note sur le compteur en cours.
 - **⏸ Pause** : le compteur continue, marqué pause (même projet) ; **▶ Reprendre** repart sur le
   choix (projet et activité choisis). Les pauses comptent dans le total du jour (« dont N min de

@@ -440,8 +440,8 @@ html.mini .hero-pause { font-size: 13px; }
 .task-form .type { font-size: 13px; padding: 0 2px; overflow-wrap: normal; }
 html.mini .task { gap: 4px; }
 
-/* Tâches qu'on active : le bouton ▶ (ligne du haut, panneau), la carte de la tâche active à la place
-   de la rangée Activité, et la tâche active repérée dans le panneau. */
+/* Tâches qu'on active : le bouton ▶ (ligne du haut, panneau), la section « En cours » (une ligne par
+   tâche active, au-dessus de la rangée Activité), et les tâches actives repérées dans le panneau. */
 .activate {
   flex: none;
   position: relative;
@@ -456,29 +456,32 @@ html.mini .task { gap: 4px; }
 .activate .btn-icon { width: 15px; height: 15px; margin-left: 2px; }
 /* Zone de toucher d'au moins 40 × 40 px, sans changer le bouton. */
 .activate::after { content: ''; position: absolute; inset: -6px; }
+.active-tasks { display: flex; flex-direction: column; gap: 6px; }
 .active-task {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 12px 14px;
-  border-radius: var(--radius);
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 12px;
+  border-radius: 12px;
   background: var(--card);
   border: 2px solid var(--go);
 }
-.at-desc { font-weight: 700; overflow-wrap: anywhere; }
-.at-meta { color: var(--muted); font-size: 13px; }
-.at-time { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--go); }
-.active-task .actions { margin-top: 6px; }
-.validate { min-height: 52px; border-radius: 14px; background: var(--go); color: #fff; font-weight: 700; }
+.at-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.at-desc { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.at-meta { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.at-time { flex: none; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--go); }
+.validate, .unactivate { flex: none; position: relative; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; font-weight: 700; font-size: 18px; }
+.validate { background: var(--go); color: #fff; }
+.unactivate { border: 1px solid var(--line); color: var(--muted); }
 .task-active { border-color: var(--go); }
 .task-live { flex: none; font-size: 12px; font-weight: 700; color: var(--go); text-transform: uppercase; letter-spacing: .04em; }
 html.mini .activate { width: 26px; height: 26px; }
 html.mini .activate .btn-icon { width: 12px; height: 12px; }
-html.mini .active-task { padding: 8px 10px; gap: 2px; }
-html.mini .at-desc { font-size: 14px; }
+html.mini .active-task { padding: 5px 5px 5px 8px; gap: 5px; }
+html.mini .at-desc { font-size: 13px; }
 html.mini .at-meta { font-size: 11px; }
-html.mini .at-time { font-size: 13px; }
-html.mini .active-task .actions .secondary, html.mini .validate { min-height: 36px; font-size: 14px; }
+html.mini .at-time { font-size: 12px; }
+html.mini .validate, html.mini .unactivate { width: 28px; height: 28px; font-size: 15px; border-radius: 8px; }
 /* Panneau des tâches dans la mini-fenêtre : à la place de l'écran, compact. */
 html.mini .tasks-page { gap: 8px; }
 html.mini .tasks-head h2 { font-size: 16px; }
