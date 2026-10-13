@@ -11,7 +11,7 @@
 
   var L = window.KTLogic;
   var API = window.KT_API_URL;
-  var VERSION = '2.0.0';
+  var VERSION = '2.1.0';
   var TIMEOUT_MS = 10000; // le serveur répond en quelques centaines de ms ; au-delà, c'est le réseau.
   var POLL_MS = 20000;    // relecture de l'état quand la page est visible (compteur lancé ailleurs)
   var RETRY_MS = 30000;
@@ -26,7 +26,8 @@
   // Fenêtre des sessions seule (?vue=sessions) : ouverte par la mini-fenêtre de bureau dans une
   // deuxième fenêtre. Ailleurs, la même fenêtre s'ouvre par-dessus l'app.
   var VUE_SESSIONS = /[?&]vue=sessions(&|$)/.test(location.search);
-  // Idem pour le panneau des tâches (?vue=taches).
+  // Panneau des tâches seul (?vue=taches) : ouvert par les mini-fenêtres d'avant la 2.1, qui le
+  // demandaient dans une deuxième fenêtre.
   var VUE_TACHES = /[?&]vue=taches(&|$)/.test(location.search);
   // App normale ouverte directement sur le panneau des tâches (bouton Tâches du widget Android).
   var OPEN_TASKS = /[?&]ouvrir=taches(&|$)/.test(location.search);
@@ -296,7 +297,7 @@
 
   function render() {
     renderView();
-    if (!VUE_TACHES && !tasksBusy()) paintTasks();
+    if (!tasksInline() && !tasksBusy()) paintTasks();
     fitDesktopWindow();
   }
 
@@ -323,14 +324,16 @@
       app.innerHTML = state.sessions ? '<section class="sessions-page">' + sessionsHtml() + '</section>' : '';
       return;
     }
-    if (VUE_TACHES) {
+    // Panneau des tâches à la place de l'écran (page seule, ou ouvert dans la mini-fenêtre).
+    if (VUE_TACHES || (MINI && state.tasks)) {
       if (!tasksBusy()) paintTasks();
       return;
     }
-    // Haut en bas = ordre d'usage : la tâche du haut, ce qui tourne, choisir un projet, lancer, l'activité,
-    // la journée, après coup.
+    // Haut en bas = ordre d'usage : la tâche du haut, ce qui tourne, choisir un projet, lancer, l'activité
+    // (ou la tâche active, qui la remplace), la journée, après coup.
+    var active = L.activeTaskOf(s);
     app.innerHTML = header(s) + backupBanner(s) + topTaskLine(s) + hero(s) +
-      section('Activité', typeBar(s)) +
+      (active ? section('Tâche en cours', activeTaskCard(s, active)) : section('Activité', typeBar(s))) +
       section('Ajouter un bloc d’heures', blocks(), 'add') +
       todayView(s);
     tick();
@@ -464,19 +467,36 @@
     return html;
   }
 
-  // La tâche du haut de la liste, au-dessus du compteur : ☐ la coche, un appui ailleurs ouvre le panneau
-  // Tâches. Sans tâche à faire, un bouton vers le panneau.
+  // La tâche du haut de la liste, au-dessus du compteur : ▶ l'active, un appui ailleurs ouvre le panneau
+  // Tâches. Sans tâche à faire, ou quand une tâche est active (sa carte est plus bas), un bouton vers le
+  // panneau.
   function topTaskLine(s) {
     var t = L.topTask(s);
-    if (!t) {
+    if (!t || L.activeTaskOf(s)) {
       var done = L.doneTasks(s, Date.now()).length;
-      return '<button class="tasks-link" data-act="openTasks">+ Tâches' + (done ? ' · ' + done + (done > 1 ? ' faites' : ' faite') : '') + '</button>';
+      return '<button class="tasks-link" data-act="openTasks">' + (t ? 'Tâches' : '+ Tâches') + (done ? ' · ' + done + (done > 1 ? ' faites' : ' faite') : '') + '</button>';
     }
     return '<div class="toptask" data-act="openTasks">' +
-      '<button class="check" data-act="checkTop" data-id="' + esc(t.id) + '" aria-label="Cocher la tâche"></button>' +
+      '<button class="activate" data-act="taskActivate" data-id="' + esc(t.id) + '" aria-label="Activer la tâche">' + ICON.play + '</button>' +
       '<span class="tt-main"><span class="tt-desc">' + esc(t.description) + '</span>' +
-      '<small>' + esc(t.project) + ' · ' + esc(L.typeOf(t)) + '</small></span>' +
+      '<small>' + taskMeta(s, t) + '</small></span>' +
       '<span class="tt-chev" aria-hidden="true">›</span></div>';
+  }
+
+  // La tâche active, à la place de la rangée Activité : le temps passé dessus en direct, Valider et
+  // Désactiver.
+  function activeTaskCard(s, t) {
+    return '<div class="active-task">' +
+      '<div class="at-desc">' + esc(t.description) + '</div>' +
+      '<small class="at-meta">' + esc(t.project) + ' · ' + esc(L.typeOf(t)) + '</small>' +
+      '<div class="at-time" id="task-spent">' + taskSpentText(s, t) + '</div>' +
+      '<div class="actions"><button class="secondary" data-act="taskDeactivate">Désactiver</button>' +
+      '<button class="validate" data-act="taskValidate" data-id="' + esc(t.id) + '">✓ Valider</button></div>' +
+      '</div>';
+  }
+
+  function taskSpentText(s, t) {
+    return L.elapsed(L.taskSpentMs(s, t, Date.now())) + ' sur cette tâche';
   }
 
   // Le sélecteur : une ligne de petits boutons de projet. Toucher un projet change le choix (et
@@ -517,6 +537,9 @@
       var sp = document.getElementById('session-pause');
       if (sp) sp.textContent = sessionPauseText(session);
     }
+    var spent = document.getElementById('task-spent');
+    var active = L.activeTaskOf(state.status);
+    if (spent && active) spent.textContent = taskSpentText(state.status, active);
     var total = document.getElementById('today-total');
     if (total && state.status) total.textContent = L.duration(L.todayTotal(state.status.today, Date.now()));
     var pause = document.getElementById('today-pause');
@@ -542,7 +565,11 @@
   document.body.appendChild(dlg);
   dlg.addEventListener('cancel', function (e) { if (dlg.dataset.locked) e.preventDefault(); });
   dlg.addEventListener('click', function (e) { if (e.target === dlg && !dlg.dataset.locked && Date.now() - lastDragEnd > 400) closeDialog(); });
-  dlg.addEventListener('close', function () { state.forgotOpen = false; state.recap = null; state.sessions = null; state.tasks = null; });
+  // Le panneau des tâches ouvert dans la mini-fenêtre n'est pas une fenêtre : en fermer une autre ne le ferme pas.
+  dlg.addEventListener('close', function () {
+    state.forgotOpen = false; state.recap = null; state.sessions = null;
+    if (!tasksInline()) state.tasks = null;
+  });
 
   function openDialog(html, locked) {
     dlg.innerHTML = '<div class="dlg">' + html + '</div>';
@@ -588,8 +615,9 @@
 
   // ---- Actions de l'interface ----
 
-  // Une coche re-dessine tout de suite : un deuxième clic tomberait sur la case de la tâche suivante.
-  // On ignore le 2e clic d'un double clic et tout clic dans les 600 ms qui suivent une coche.
+  // Une validation re-dessine tout de suite : un deuxième clic tomberait sur ce qui prend la place (la
+  // case de la tâche suivante, la rangée Activité qui revient). On ignore le 2e clic d'un double clic
+  // et tout clic, où qu'il tombe, dans les 600 ms qui suivent une validation.
   var lastCheckAt = 0;
   function checkAllowed(e) {
     if (e && e.detail > 1) return false;
@@ -617,12 +645,16 @@
       act('start', { id: uid(), project: c.project, type: c.type });
     },
 
-    // Mini-fenêtre : le panneau s'ouvre dans une deuxième fenêtre (desktop/main.js).
-    openTasks: function () {
-      if (MINI) { window.open('./?vue=taches', 'taches'); return; }
-      openTasksPanel();
+    // Mini-fenêtre : le panneau remplace l'écran dans la même fenêtre ; ailleurs, il s'ouvre par-dessus.
+    openTasks: function () { openTasksPanel(); },
+    tasksClose: function () {
+      if (VUE_TACHES) window.close();
+      else if (MINI) { state.tasks = null; render(); }
+      else closeDialog();
     },
-    tasksClose: function () { if (VUE_TACHES) window.close(); else closeDialog(); },
+    taskActivate: function (el) { act('activateTask', { id: el.dataset.id }); },
+    taskDeactivate: function () { act('deactivateTask', {}); },
+    taskValidate: function (el, e) { if (checkAllowed(e)) act('checkTask', { id: el.dataset.id }); },
     taskAdd: function () {
       var c = currentChoice();
       state.tasks.form = { id: null, project: c.project, type: c.type };
@@ -669,10 +701,6 @@
     },
     taskCheck: function (el, e) { if (checkAllowed(e)) act('checkTask', { id: el.dataset.id }); },
     taskUncheck: function (el) { act('uncheckTask', { id: el.dataset.id }); },
-
-    checkTop: function (el, e) {
-      if (checkAllowed(e)) act('checkTask', { id: el.dataset.id });
-    },
 
     stop: function () { act('stop', {}); },
 
@@ -1070,16 +1098,21 @@
     paintTasks();
   }
 
+  // Le panneau tient la page (page seule, mini-fenêtre) au lieu de s'ouvrir par-dessus.
+  function tasksInline() { return VUE_TACHES || MINI; }
+
   // Une fiche ouverte ou une ligne tirée ne doivent pas être redessinées par une relecture de l'état
   // (la saisie ou le geste serait perdu).
   function tasksBusy() {
-    return !state.tasks || !!state.tasks.form || state.tasks.dragging || (!VUE_TACHES && !dlg.open) || state.forgotOpen;
+    return !state.tasks || !!state.tasks.form || state.tasks.dragging || (!tasksInline() && !dlg.open) || state.forgotOpen;
   }
 
   function paintTasks() {
     if (!state.tasks || !state.status) return;
-    if (VUE_TACHES) {
-      document.getElementById('app').innerHTML = '<section class="tasks-page">' + tasksHtml() + '</section>';
+    if (tasksInline()) {
+      // Mini-fenêtre : la barre du haut reste, c'est la poignée qui déplace la fenêtre.
+      document.getElementById('app').innerHTML = (MINI ? header(state.status) : '') + '<section class="tasks-page">' + tasksHtml() + '</section>';
+      fitDesktopWindow();
       return;
     }
     if (state.forgotOpen) return;
@@ -1097,27 +1130,37 @@
     });
   }
 
-  function taskMeta(t) { return esc(t.project) + ' · ' + esc(L.typeOf(t)); }
+  // « Projet · Activité », puis le temps passé dès qu'il dépasse une minute : « 24 min », « 1 h 05 ».
+  function taskMeta(s, t) {
+    var m = Math.round(L.taskSpentMs(s, t, Date.now()) / 60000);
+    var spent = m < 1 ? '' : ' · ' + (m < 60 ? m + ' min' : L.duration(m / 60));
+    return esc(t.project) + ' · ' + esc(L.typeOf(t)) + spent;
+  }
 
   function tasksHtml() {
     var s = state.status;
     if (state.tasks.form) return taskFormHtml(s, state.tasks.form);
     var todo = L.todoTasks(s);
     var done = L.doneTasks(s, Date.now());
+    var active = L.activeTaskOf(s);
     return '<div class="tasks">' +
       '<div class="tasks-head"><h2>Tâches</h2><button class="icon" data-act="tasksClose" aria-label="Fermer">✕</button></div>' +
       (todo.length ? '<ul class="task-list">' + todo.map(function (t) {
-        return '<li class="task task-todo" data-id="' + esc(t.id) + '">' +
+        var isActive = active === t;
+        return '<li class="task task-todo' + (isActive ? ' task-active' : '') + '" data-id="' + esc(t.id) + '">' +
           '<button class="grip" aria-label="Déplacer">≡</button>' +
-          '<button class="check" data-act="taskCheck" data-id="' + esc(t.id) + '" aria-label="Cocher"></button>' +
+          '<button class="check" data-act="taskCheck" data-id="' + esc(t.id) + '" aria-label="Valider"></button>' +
           '<button class="task-body" data-act="taskOpen" data-id="' + esc(t.id) + '">' +
-          '<span class="task-desc">' + esc(t.description) + '</span><small>' + taskMeta(t) + '</small></button></li>';
+          '<span class="task-desc">' + esc(t.description) + '</span><small>' + taskMeta(s, t) + '</small></button>' +
+          (isActive ? '<span class="task-live">en cours</span>'
+            : '<button class="activate" data-act="taskActivate" data-id="' + esc(t.id) + '" aria-label="Activer">' + ICON.play + '</button>') +
+          '</li>';
       }).join('') + '</ul>' : '<p class="tasks-empty">Rien à faire pour l’instant.</p>') +
       '<button class="secondary" data-act="taskAdd">+ Ajouter une tâche</button>' +
       (done.length ? '<h3 class="tasks-sub">Faites aujourd’hui</h3><ul class="task-list">' + done.map(function (t) {
         return '<li class="task task-done" data-id="' + esc(t.id) + '">' +
-          '<button class="check on" data-act="taskUncheck" data-id="' + esc(t.id) + '" aria-label="Décocher">✓</button>' +
-          '<span class="task-body"><span class="task-desc">' + esc(t.description) + '</span><small>' + taskMeta(t) + '</small></span></li>';
+          '<button class="check on" data-act="taskUncheck" data-id="' + esc(t.id) + '" aria-label="Dévalider">✓</button>' +
+          '<span class="task-body"><span class="task-desc">' + esc(t.description) + '</span><small>' + taskMeta(s, t) + '</small></span></li>';
       }).join('') + '</ul>' : '') +
       '</div>';
   }
@@ -1212,6 +1255,7 @@
     var el = e.target.closest('[data-act]');
     if (!el || !handlers[el.dataset.act]) return;
     if (!state.status && WITHOUT_STATUS.indexOf(el.dataset.act) < 0) return;
+    if (Date.now() - lastCheckAt < 600) return;
     handlers[el.dataset.act](el, e);
   });
 

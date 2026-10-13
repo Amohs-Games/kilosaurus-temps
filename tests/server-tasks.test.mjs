@@ -1,7 +1,8 @@
-// Tâches (server/core.js) : actions, liste du status, et règle de la tâche du haut.
+// Tâches (server/core.js) : actions, liste du status, tâche active et lien des morceaux
+// (docs/specs/2026-10-12-taches-actives-design.md).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeEnv, makeClock, ok, fails, at } from './server-harness.mjs';
+import { makeEnv, makeClock, ok, fails } from './server-harness.mjs';
 
 const opsCount = (sqlite) => sqlite.prepare('SELECT COUNT(*) AS n FROM ops').get().n;
 const taskRow = (sqlite, id) => sqlite.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
@@ -11,17 +12,34 @@ const snapshot = (sqlite) => JSON.stringify({
   settings: sqlite.prepare('SELECT * FROM settings ORDER BY key').all(),
 });
 const ids = (s) => s.tasks.map((t) => t.id);
+const task = (s, id) => s.tasks.find((t) => t.id === id);
+const open = (rows) => rows.find((r) => r.end_ms == null);
 
-test('addTask sur liste vide, compteur arrêté : le choix devient celui de la tâche, aucune session', async () => {
+// Deux tâches, A (Studio · Social) et B (Fluffy · Art), et un compteur sur Fluffy · Dev depuis 30 min.
+async function twoTasksRunning() {
+  const env = await makeEnv();
+  const { call, clock } = env;
+  ok(await call('addTask', { id: 'A', description: 'A', project: 'Studio', type: 'Social' }));
+  ok(await call('addTask', { id: 'B', description: 'B', project: 'Fluffy', type: 'Art' }));
+  ok(await call('start', { id: 's1', project: 'Fluffy', type: 'Dev' }));
+  clock.advance(30);
+  return env;
+}
+
+// ---- Liste ----
+
+test('addTask : ni choix ni compteur touchés, aucune tâche active', async () => {
   const { call, rows, sqlite } = await makeEnv();
+  ok(await call('select', { project: 'Fluffy', type: 'Dev' }));
   const s = ok(await call('addTask', { id: 'a', description: '  Appel avec Léa ', project: 'Studio', type: 'Social' }));
-  assert.deepEqual(s.choice, { project: 'Studio', type: 'Social' });
+  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Dev' });
+  assert.equal(s.activeTask, null);
   assert.equal(rows().length, 0);
-  assert.equal(opsCount(sqlite), 1);
-  assert.deepEqual(s.tasks, [{ id: 'a', description: 'Appel avec Léa', project: 'Studio', type: 'Social', position: 1, done: null, started: null }]);
+  assert.equal(opsCount(sqlite), 2);
+  assert.deepEqual(s.tasks, [{ id: 'a', description: 'Appel avec Léa', project: 'Studio', type: 'Social', position: 1, done: null, started: null, spentMs: 0 }]);
 });
 
-test('addTask : défaut = le choix ; une deuxième tâche ne change pas le choix', async () => {
+test('addTask : défaut = le choix', async () => {
   const { call } = await makeEnv();
   ok(await call('select', { project: 'Studio', type: 'Art' }));
   let s = ok(await call('addTask', { id: 'a', description: 'A' }));
@@ -33,94 +51,21 @@ test('addTask : défaut = le choix ; une deuxième tâche ne change pas le choix
   assert.deepEqual(s.tasks.map((t) => t.position), [1, 2]);
 });
 
-async function twoTasksRunning() {
-  const env = await makeEnv();
-  const { call, clock } = env;
-  ok(await call('addTask', { id: 'A', description: 'A', project: 'Studio', type: 'Social' }));
-  ok(await call('addTask', { id: 'B', description: 'B', project: 'Fluffy', type: 'Art' }));
-  ok(await call('start', { id: 's1', project: 'Fluffy', type: 'Dev' }));
-  clock.advance(30);
-  return env;
-}
-
-test('checkTask compteur en marche : bascule à la même seconde sur la tâche suivante', async () => {
-  const { call, rows, clock, sqlite } = await twoTasksRunning();
-  // Le compteur tourne sur Fluffy·Dev alors que le haut est A (Studio·Social) : pas de bascule au start.
-  const before = opsCount(sqlite);
-  const s = ok(await call('checkTask', { id: 'A' }));
-  const [a, b] = rows();
-  assert.equal(a.end_ms, clock.now());
-  assert.equal(b.start_ms, clock.now());
-  assert.equal(b.end_ms, null);
-  assert.equal(b.project, 'Fluffy');
-  assert.equal(b.type, 'Art');
-  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Art' });
-  assert.equal(opsCount(sqlite), before + 1);
-  const done = s.tasks.find((t) => t.id === 'A');
-  assert.equal(done.done, new Date(clock.now()).toISOString());
-  assert.equal(done.started, new Date(at('2026-10-01T06:00:00+02:00')).toISOString());
-  assert.deepEqual(ids(s), ['B', 'A']);
-});
-
-test('deuxième coche le même jour : started = done de la précédente', async () => {
-  const { call, clock } = await twoTasksRunning();
-  ok(await call('checkTask', { id: 'A' }));
-  clock.advance(45);
-  const s = ok(await call('checkTask', { id: 'B' }));
-  const a = s.tasks.find((t) => t.id === 'A');
-  const b = s.tasks.find((t) => t.id === 'B');
-  assert.equal(b.started, a.done);
-  assert.equal(b.done, new Date(clock.now()).toISOString());
-});
-
-test('coche à 05:30 : jour de travail de la veille, started = 6 h de la veille', async () => {
-  const clock = makeClock('2026-10-02T05:30:00+02:00');
-  const { call, sqlite } = await makeEnv({ clock });
-  ok(await call('addTask', { id: 'A', description: 'A' }));
-  ok(await call('checkTask', { id: 'A' }));
-  const r = taskRow(sqlite, 'A');
-  assert.equal(r.done_day, '2026-10-01');
-  assert.equal(r.started_ms, at('2026-10-01T06:00:00+02:00'));
-  assert.equal(r.done_ms, clock.now());
-});
-
-test('en pause : la pause continue, le choix devient la tâche suivante', async () => {
-  const { call, rows, clock } = await makeEnv();
-  ok(await call('addTask', { id: 'A', description: 'A', project: 'Studio', type: 'Social' }));
-  ok(await call('addTask', { id: 'B', description: 'B', project: 'Fluffy', type: 'Art' }));
-  ok(await call('start', { id: 'w', project: 'Studio', type: 'Social' }));
-  clock.advance(10);
-  ok(await call('start', { id: 'p', project: 'Studio', type: 'Pause' }));
-  clock.advance(5);
-  const s = ok(await call('checkTask', { id: 'A' }));
-  assert.equal(rows().length, 2);
-  assert.equal(s.running.type, 'Pause');
-  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Art' });
-});
-
-test('choix manuel respecté tant que la tâche du haut ne change pas', async () => {
-  const { call, clock } = await twoTasksRunning();
+test('valider, déplacer, supprimer, dévalider une tâche non active : ni choix ni compteur touchés', async () => {
+  const { call, rows, clock } = await twoTasksRunning();
   ok(await call('addTask', { id: 'C', description: 'C', project: 'Studio', type: 'Dev' }));
-  ok(await call('checkTask', { id: 'A' }));
-  clock.advance(1);
-  let s = ok(await call('select', { project: 'Studio' }));
-  assert.deepEqual(s.choice, { project: 'Studio', type: 'Art' });
-  s = ok(await call('editTask', { id: 'C', description: 'C bis', type: 'Writing' }));
-  assert.deepEqual(s.choice, { project: 'Studio', type: 'Art' });
-  assert.equal(s.running.project, 'Studio');
-});
-
-test('editTask de la tâche du haut : le choix suit et le compteur bascule', async () => {
-  const { call, rows, clock } = await makeEnv();
-  ok(await call('addTask', { id: 'A', description: 'A', project: 'Fluffy', type: 'Dev' }));
-  ok(await call('start', { id: 's', project: 'Fluffy', type: 'Dev' }));
-  clock.advance(20);
-  const s = ok(await call('editTask', { id: 'A', type: 'Art' }));
-  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Art' });
-  const [a, b] = rows();
-  assert.equal(a.end_ms, clock.now());
-  assert.equal(b.start_ms, clock.now());
-  assert.equal(b.type, 'Art');
+  const runBefore = open(rows());
+  let s = ok(await call('checkTask', { id: 'A' }));
+  s = ok(await call('moveTask', { id: 'C', before: 'B' }));
+  s = ok(await call('deleteTask', { id: 'B' }));
+  clock.advance(5);
+  s = ok(await call('uncheckTask', { id: 'A' }));
+  s = ok(await call('editTask', { id: 'C', type: 'Writing' }));
+  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Dev' });
+  assert.equal(rows().length, 1);
+  assert.equal(open(rows()).id, runBefore.id);
+  assert.equal(s.activeTask, null);
+  assert.deepEqual(ids(s), ['A', 'C']);
 });
 
 test('editTask sans changement : aucune entrée ops ; description seule : le choix ne bouge pas', async () => {
@@ -135,20 +80,13 @@ test('editTask sans changement : aucune entrée ops ; description seule : le cho
   fails(await call('editTask', { id: 'zzz', description: 'x' }), 'invalid', /Tâche introuvable/);
 });
 
-test('moveTask qui met B en haut : bascule sur B ; sans changement : aucune entrée ops', async () => {
-  const { call, rows, clock, sqlite } = await makeEnv();
-  ok(await call('addTask', { id: 'A', description: 'A', project: 'Studio', type: 'Social' }));
-  ok(await call('addTask', { id: 'B', description: 'B', project: 'Fluffy', type: 'Art' }));
-  ok(await call('addTask', { id: 'C', description: 'C', project: 'Fluffy', type: 'Dev' }));
-  ok(await call('start', { id: 's', project: 'Studio', type: 'Social' }));
-  clock.advance(15);
+test('moveTask : nouvel ordre, positions 1..n ; sans changement : aucune entrée ops', async () => {
+  const { call, sqlite } = await makeEnv();
+  for (const id of ['A', 'B', 'C']) ok(await call('addTask', { id, description: id }));
   let n = opsCount(sqlite);
   let s = ok(await call('moveTask', { id: 'B', before: 'A' }));
   assert.deepEqual(ids(s), ['B', 'A', 'C']);
   assert.deepEqual(s.tasks.map((t) => t.position), [1, 2, 3]);
-  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Art' });
-  assert.equal(rows().length, 2);
-  assert.equal(rows()[1].type, 'Art');
   assert.equal(opsCount(sqlite), n + 1);
   n = opsCount(sqlite);
   ok(await call('moveTask', { id: 'B', before: 'A' }));
@@ -171,64 +109,277 @@ test('moveTask ne réécrit que les positions qui changent', async () => {
   assert.equal(taskRow(sqlite, 'A').touched_ms, touchedA);
 });
 
-test('deleteTask de la tâche du haut : la suivante s’applique ; la dernière : rien ne change', async () => {
+test('moveTask sans changement d’ordre, positions avec trous : rien ne s’écrit', async () => {
   const { call, sqlite } = await makeEnv();
-  ok(await call('addTask', { id: 'A', description: 'A', project: 'Studio', type: 'Social' }));
-  ok(await call('addTask', { id: 'B', description: 'B', project: 'Fluffy', type: 'Art' }));
-  let s = ok(await call('deleteTask', { id: 'A' }));
-  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Art' });
-  assert.deepEqual(ids(s), ['B']);
+  for (const id of ['A', 'B', 'C']) ok(await call('addTask', { id, description: id }));
+  ok(await call('checkTask', { id: 'A' }));
+  const n = opsCount(sqlite);
+  const before = snapshot(sqlite);
+  ok(await call('moveTask', { id: 'C', before: null }));
+  assert.equal(opsCount(sqlite), n);
+  assert.equal(snapshot(sqlite), before);
+});
+
+test('deleteTask : suppression douce, rejouée sans écriture', async () => {
+  const { call, sqlite } = await makeEnv();
+  ok(await call('addTask', { id: 'A', description: 'A' }));
+  const s = ok(await call('deleteTask', { id: 'A' }));
+  assert.deepEqual(s.tasks, []);
   assert.notEqual(taskRow(sqlite, 'A').deleted_ms, null);
   const n = opsCount(sqlite);
   ok(await call('deleteTask', { id: 'A' }));
   assert.equal(opsCount(sqlite), n);
-  ok(await call('select', { project: 'Studio', type: 'Dev' }));
-  s = ok(await call('deleteTask', { id: 'B' }));
-  assert.deepEqual(s.choice, { project: 'Studio', type: 'Dev' });
-  assert.deepEqual(s.tasks, []);
   fails(await call('deleteTask', { id: 'nope' }), 'invalid', /Tâche introuvable/);
 });
 
-test('uncheckTask : la tâche revient à sa place et s’applique si elle redevient en haut', async () => {
+test('checkTask : jour de travail de la validation ; coche à 05:30 = la veille', async () => {
+  const clock = makeClock('2026-10-02T05:30:00+02:00');
+  const { call, sqlite } = await makeEnv({ clock });
+  ok(await call('addTask', { id: 'A', description: 'A' }));
+  ok(await call('checkTask', { id: 'A' }));
+  const r = taskRow(sqlite, 'A');
+  assert.equal(r.done_day, '2026-10-01');
+  assert.equal(r.done_ms, clock.now());
+  assert.equal(r.started_ms, null, 'aucun morceau passé dessus : pas de début');
+});
+
+test('uncheckTask : la tâche reprend sa place, positions uniques, non active, choix intact', async () => {
   const { call, clock, sqlite } = await makeEnv();
   ok(await call('addTask', { id: 'A', description: 'A', project: 'Studio', type: 'Social' }));
+  clock.advance(1);
   ok(await call('addTask', { id: 'B', description: 'B', project: 'Fluffy', type: 'Art' }));
+  clock.advance(1);
+  ok(await call('addTask', { id: 'C', description: 'C', project: 'Fluffy', type: 'Dev' }));
+  ok(await call('activateTask', { id: 'A' }));
   ok(await call('checkTask', { id: 'A' }));
-  clock.advance(5);
+  ok(await call('select', { project: 'Fluffy', type: 'Misc' }));
+  ok(await call('moveTask', { id: 'C', before: 'B' }));
   const n = opsCount(sqlite);
-  let s = ok(await call('uncheckTask', { id: 'A' }));
-  assert.deepEqual(ids(s), ['A', 'B']);
-  assert.deepEqual(s.choice, { project: 'Studio', type: 'Social' });
+  const s = ok(await call('uncheckTask', { id: 'A' }));
+  assert.deepEqual(ids(s), ['A', 'C', 'B']);
+  assert.deepEqual(s.tasks.map((t) => t.position), [1, 2, 3]);
+  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Misc' });
+  assert.equal(s.activeTask, null);
   const r = taskRow(sqlite, 'A');
   assert.equal(r.done_ms, null);
   assert.equal(r.done_day, null);
   assert.equal(r.started_ms, null);
-  assert.equal(r.position, 1);
   assert.equal(opsCount(sqlite), n + 1);
   ok(await call('uncheckTask', { id: 'A' }));
   assert.equal(opsCount(sqlite), n + 1);
 });
 
-test('undo d’une coche avec bascule remet la tâche, les deux sessions et le choix', async () => {
-  const { call, clock, sqlite } = await twoTasksRunning();
-  clock.advance(1);
-  const before = snapshot(sqlite);
-  const s = ok(await call('checkTask', { id: 'A' }));
-  assert.notEqual(snapshot(sqlite), before);
-  ok(await call('undo', { opId: s.undo.opId }));
-  const restored = JSON.parse(snapshot(sqlite));
-  const expected = JSON.parse(before);
-  // La session ouverte par la bascule reste en base, marquée supprimée (son id reste pris).
-  assert.deepEqual(restored.tasks, expected.tasks);
-  assert.deepEqual(restored.settings, expected.settings);
-  assert.deepEqual(restored.entries.filter((e) => e.deleted_ms == null), expected.entries);
-  const s2 = ok(await call('status'));
-  assert.equal(s2.running.id, 's1');
-  assert.equal(s2.tasks.find((t) => t.id === 'A').done, null);
+// ---- Tâche active ----
+
+test('activateTask compteur arrêté : le choix devient la tâche, rien ne se lance ; ▶ part sur elle', async () => {
+  const { call, rows, clock } = await twoTasksRunning();
+  ok(await call('stop'));
+  let s = ok(await call('activateTask', { id: 'A' }));
+  assert.equal(s.activeTask, 'A');
+  assert.deepEqual(s.choice, { project: 'Studio', type: 'Social' });
+  assert.equal(s.running, null);
+  clock.advance(5);
+  s = ok(await call('start', { id: 's2', project: 'Studio', type: 'Social' }));
+  assert.equal(s.running.task, 'A');
+  assert.equal(open(rows()).task_id, 'A');
 });
 
-test('idempotence : rejouer checkTask n’écrit ni ne bascule une seconde fois', async () => {
+test('activateTask compteur en marche sur le même projet et la même activité : nouveau morceau lié, même seconde', async () => {
+  const { call, rows, clock } = await makeEnv();
+  ok(await call('addTask', { id: 'A', description: 'A', project: 'Fluffy', type: 'Dev' }));
+  ok(await call('start', { id: 's1', project: 'Fluffy', type: 'Dev' }));
+  clock.advance(20);
+  const s = ok(await call('activateTask', { id: 'A' }));
+  const [a, b] = rows();
+  assert.equal(a.end_ms, clock.now());
+  assert.equal(a.task_id, null);
+  assert.equal(b.start_ms, clock.now());
+  assert.equal(b.task_id, 'A');
+  assert.equal(b.project, 'Fluffy');
+  assert.equal(b.type, 'Dev');
+  assert.equal(s.running.task, 'A');
+});
+
+test('activateTask compteur en marche ailleurs : bascule sur le projet et l’activité de la tâche', async () => {
+  const { call, rows, clock } = await twoTasksRunning();
+  const s = ok(await call('activateTask', { id: 'B' }));
+  const [a, b] = rows();
+  assert.equal(a.end_ms, clock.now());
+  assert.deepEqual([b.project, b.type, b.task_id, b.start_ms], ['Fluffy', 'Art', 'B', clock.now()]);
+  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Art' });
+});
+
+test('activateTask : deux fois = une seule écriture ; une autre la remplace ; une tâche validée refusée', async () => {
   const { call, rows, clock, sqlite } = await twoTasksRunning();
+  ok(await call('activateTask', { id: 'A' }));
+  const n = opsCount(sqlite);
+  ok(await call('activateTask', { id: 'A' }));
+  assert.equal(opsCount(sqlite), n);
+  clock.advance(10);
+  const s = ok(await call('activateTask', { id: 'B' }));
+  assert.equal(s.activeTask, 'B');
+  assert.equal(open(rows()).task_id, 'B');
+  ok(await call('checkTask', { id: 'A' }));
+  fails(await call('activateTask', { id: 'A' }), 'invalid', /déjà validée/);
+  fails(await call('activateTask', { id: 'nope' }), 'invalid', /Tâche introuvable/);
+});
+
+test('STOP garde la tâche active ; pause puis REPRENDRE repart sur elle', async () => {
+  const { call, rows, clock } = await twoTasksRunning();
+  ok(await call('activateTask', { id: 'A' }));
+  clock.advance(10);
+  let s = ok(await call('start', { id: 'p', project: 'Studio', type: 'Pause' }));
+  assert.equal(s.activeTask, 'A', 'la pause garde la tâche active');
+  assert.equal(s.running.task, null, 'un morceau Pause n’a pas de lien');
+  assert.deepEqual(s.choice, { project: 'Studio', type: 'Social' });
+  clock.advance(5);
+  s = ok(await call('start', { id: 'r', project: 'Studio', type: 'Social' }));
+  assert.equal(s.running.task, 'A');
+  clock.advance(5);
+  s = ok(await call('stop'));
+  assert.equal(s.activeTask, 'A', 'le stop garde la tâche active');
+  assert.equal(rows().filter((r) => r.task_id === 'A').length, 2);
+});
+
+test('toucher un autre projet désactive la tâche ; le compteur bascule sans lien', async () => {
+  const { call, rows, clock } = await twoTasksRunning();
+  ok(await call('activateTask', { id: 'A' }));
+  clock.advance(10);
+  let s = ok(await call('select', { project: 'Studio' }));
+  assert.equal(s.activeTask, 'A', 'même projet, même activité : la tâche reste');
+  s = ok(await call('select', { project: 'Fluffy' }));
+  assert.equal(s.activeTask, null);
+  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Social' });
+  const run = open(rows());
+  assert.deepEqual([run.project, run.type, run.task_id, run.start_ms], ['Fluffy', 'Social', null, clock.now()]);
+});
+
+test('une autre activité (agent) ou un start ailleurs (widget) désactivent la tâche', async () => {
+  const { call } = await twoTasksRunning();
+  ok(await call('activateTask', { id: 'A' }));
+  let s = ok(await call('select', { type: 'Dev' }));
+  assert.equal(s.activeTask, null);
+  ok(await call('activateTask', { id: 'A' }));
+  ok(await call('stop'));
+  s = ok(await call('start', { id: 'w', project: 'Studio', type: 'Writing' }));
+  assert.equal(s.activeTask, null);
+  assert.equal(s.running.task, null);
+});
+
+test('valider la tâche active compteur en marche : le compteur continue sans tâche, à la même seconde', async () => {
+  const { call, rows, clock, sqlite } = await twoTasksRunning();
+  ok(await call('activateTask', { id: 'A' }));
+  const linkedStart = clock.now();
+  clock.advance(40);
+  const n = opsCount(sqlite);
+  const s = ok(await call('checkTask', { id: 'A' }));
+  assert.equal(opsCount(sqlite), n + 1, 'une seule entrée de journal');
+  assert.equal(s.activeTask, null);
+  assert.deepEqual(s.choice, { project: 'Studio', type: 'Social' });
+  const linked = rows().find((r) => r.task_id === 'A');
+  assert.equal(linked.end_ms, clock.now());
+  const run = open(rows());
+  assert.deepEqual([run.project, run.type, run.task_id, run.start_ms], ['Studio', 'Social', null, clock.now()]);
+  const done = task(s, 'A');
+  assert.equal(done.done, new Date(clock.now()).toISOString());
+  assert.equal(done.started, new Date(linkedStart).toISOString());
+  assert.equal(done.spentMs, 40 * 60000);
+});
+
+test('deactivateTask : le choix reste, le compteur continue sans lien ; sans tâche active, rien', async () => {
+  const { call, rows, clock, sqlite } = await twoTasksRunning();
+  ok(await call('activateTask', { id: 'B' }));
+  clock.advance(10);
+  const s = ok(await call('deactivateTask'));
+  assert.equal(s.activeTask, null);
+  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Art' });
+  const run = open(rows());
+  assert.deepEqual([run.project, run.type, run.task_id, run.start_ms], ['Fluffy', 'Art', null, clock.now()]);
+  const n = opsCount(sqlite);
+  ok(await call('deactivateTask'));
+  assert.equal(opsCount(sqlite), n);
+});
+
+test('editTask de la tâche active : le choix suit, le compteur bascule et garde le lien', async () => {
+  const { call, rows, clock } = await makeEnv();
+  ok(await call('addTask', { id: 'A', description: 'A', project: 'Fluffy', type: 'Dev' }));
+  ok(await call('activateTask', { id: 'A' }));
+  ok(await call('start', { id: 's', project: 'Fluffy', type: 'Dev' }));
+  clock.advance(20);
+  const s = ok(await call('editTask', { id: 'A', type: 'Art' }));
+  assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Art' });
+  assert.equal(s.activeTask, 'A');
+  const [a, b] = rows();
+  assert.equal(a.end_ms, clock.now());
+  assert.deepEqual([b.type, b.task_id, b.start_ms], ['Art', 'A', clock.now()]);
+});
+
+test('deleteTask de la tâche active : désactivée, le compteur continue sans lien', async () => {
+  const { call, rows, clock } = await twoTasksRunning();
+  ok(await call('activateTask', { id: 'B' }));
+  clock.advance(10);
+  const s = ok(await call('deleteTask', { id: 'B' }));
+  assert.equal(s.activeTask, null);
+  assert.equal(open(rows()).task_id, null);
+  assert.equal(open(rows()).start_ms, clock.now());
+});
+
+test('un réglage qui pointe vers une tâche validée vaut « aucune » : status et start l’ignorent', async () => {
+  const { call, sqlite } = await makeEnv();
+  ok(await call('addTask', { id: 'A', description: 'A', project: 'Fluffy', type: 'Dev' }));
+  ok(await call('checkTask', { id: 'A' }));
+  sqlite.prepare("INSERT INTO settings (key, value) VALUES ('active_task', 'A')").run();
+  let s = ok(await call('status'));
+  assert.equal(s.activeTask, null);
+  s = ok(await call('start', { id: 's', project: 'Fluffy', type: 'Dev' }));
+  assert.equal(s.running.task, null);
+});
+
+// ---- Temps d'une tâche ----
+
+test('spentMs : morceaux terminés et liés ; le morceau en cours n’y est pas ; corriger ou supprimer un morceau le corrige', async () => {
+  const { call, rows, clock } = await makeEnv();
+  ok(await call('addTask', { id: 'A', description: 'A', project: 'Fluffy', type: 'Dev' }));
+  ok(await call('activateTask', { id: 'A' }));
+  ok(await call('start', { id: 's1', project: 'Fluffy', type: 'Dev' }));
+  clock.advance(30);
+  let s = ok(await call('stop'));
+  assert.equal(task(s, 'A').spentMs, 30 * 60000);
+  clock.advance(60);
+  ok(await call('start', { id: 's2', project: 'Fluffy', type: 'Dev' }));
+  clock.advance(15);
+  s = ok(await call('status'));
+  assert.equal(task(s, 'A').spentMs, 30 * 60000, 'le morceau en cours n’est pas compté');
+  s = ok(await call('stop'));
+  assert.equal(task(s, 'A').spentMs, 45 * 60000);
+  const first = rows()[0];
+  s = ok(await call('editEntry', { id: first.id, end: new Date(first.start_ms + 20 * 60000).toISOString() }));
+  assert.equal(task(s, 'A').spentMs, 35 * 60000);
+  s = ok(await call('deleteEntry', { id: 's2' }));
+  assert.equal(task(s, 'A').spentMs, 20 * 60000);
+});
+
+// ---- Annulation, hors ligne, compteur oublié ----
+
+for (const [label, action] of [['activation', 'activateTask'], ['validation', 'checkTask'], ['désactivation', 'deactivateTask']]) {
+  test(`undo d’une ${label} remet tâche, compteur et choix exactement`, async () => {
+    const { call, clock, sqlite } = await twoTasksRunning();
+    if (action !== 'activateTask') ok(await call('activateTask', { id: 'B' }));
+    clock.advance(5);
+    const before = JSON.parse(snapshot(sqlite));
+    const s = ok(await call(action, { id: 'B' }));
+    ok(await call('undo', { opId: s.undo.opId }));
+    const restored = JSON.parse(snapshot(sqlite));
+    // La session ouverte par la bascule reste en base, marquée supprimée (son id reste pris).
+    assert.deepEqual(restored.tasks, before.tasks);
+    assert.deepEqual(restored.settings, before.settings);
+    assert.deepEqual(restored.entries.filter((e) => e.deleted_ms == null), before.entries);
+  });
+}
+
+test('idempotence : rejouer checkTask ou addTask n’écrit rien une seconde fois', async () => {
+  const { call, rows, clock, sqlite } = await twoTasksRunning();
+  ok(await call('activateTask', { id: 'A' }));
   ok(await call('checkTask', { id: 'A' }));
   const n = opsCount(sqlite);
   const count = rows().length;
@@ -241,28 +392,27 @@ test('idempotence : rejouer checkTask n’écrit ni ne bascule une seconde fois'
   assert.equal(taskRow(sqlite, 'A').description, 'A');
 });
 
-test('hors ligne : checkTask bascule à l’heure du tap', async () => {
+test('hors ligne : activateTask bascule à l’heure du tap', async () => {
   const { call, rows, clock } = await twoTasksRunning();
   clock.advance(30);
   const tap = new Date(clock.now() - 10 * 60000).toISOString();
-  const s = ok(await call('checkTask', { id: 'A', offline: true, clientTime: tap }));
+  ok(await call('activateTask', { id: 'B', offline: true, clientTime: tap }));
   assert.equal(rows()[0].end_ms, Date.parse(tap));
   assert.equal(rows()[1].start_ms, Date.parse(tap));
-  assert.equal(s.tasks.find((t) => t.id === 'A').done, tap);
+  assert.equal(rows()[1].task_id, 'B');
 });
 
-test('compteur oublié (> 24 h) : la coche réussit, pas de bascule, le choix change', async () => {
-  const { call, rows, clock } = await makeEnv();
-  ok(await call('addTask', { id: 'A', description: 'A', project: 'Studio', type: 'Social' }));
-  ok(await call('addTask', { id: 'B', description: 'B', project: 'Fluffy', type: 'Art' }));
-  ok(await call('start', { id: 's', project: 'Studio', type: 'Social' }));
+test('compteur oublié (> 24 h) : l’activation réussit, pas de bascule, le choix change', async () => {
+  const { call, rows, clock } = await twoTasksRunning();
   clock.advance(25 * 60);
-  const s = ok(await call('checkTask', { id: 'A' }));
+  const s = ok(await call('activateTask', { id: 'B' }));
   assert.equal(rows().length, 1);
   assert.equal(rows()[0].end_ms, null);
   assert.deepEqual(s.choice, { project: 'Fluffy', type: 'Art' });
-  assert.notEqual(s.tasks.find((t) => t.id === 'A').done, null);
+  assert.equal(s.activeTask, 'B');
 });
+
+// ---- Validation et lecture ----
 
 test('validation des tâches', async () => {
   const { call, sqlite } = await makeEnv();
@@ -297,43 +447,11 @@ test('status.tasks : à faire puis faites du jour ; une coche d’avant 6 h n’
   assert.notEqual(taskRow(sqlite, 'B'), undefined);
 });
 
-test('status initial : tasks est vide', async () => {
+test('status initial : tasks est vide, aucune tâche active', async () => {
   const { call } = await makeEnv();
-  assert.deepEqual(ok(await call('status')).tasks, []);
-});
-
-test('moveTask sans changement d’ordre, positions avec trous : rien ne s’écrit', async () => {
-  const { call, sqlite } = await makeEnv();
-  for (const id of ['A', 'B', 'C']) ok(await call('addTask', { id, description: id }));
-  ok(await call('checkTask', { id: 'A' }));
-  const n = opsCount(sqlite);
-  const before = snapshot(sqlite);
-  ok(await call('moveTask', { id: 'C', before: null }));
-  assert.equal(opsCount(sqlite), n);
-  assert.equal(snapshot(sqlite), before);
-});
-
-test('uncheckTask : positions uniques parmi les tâches à faire, la décochée repasse en haut et bascule', async () => {
-  const { call, rows, clock, sqlite } = await makeEnv();
-  ok(await call('addTask', { id: 'A', description: 'A', project: 'Studio', type: 'Social' }));
-  clock.advance(1);
-  ok(await call('addTask', { id: 'B', description: 'B', project: 'Fluffy', type: 'Art' }));
-  clock.advance(1);
-  ok(await call('addTask', { id: 'C', description: 'C', project: 'Fluffy', type: 'Dev' }));
-  ok(await call('checkTask', { id: 'A' }));
-  ok(await call('start', { id: 's1', project: 'Fluffy', type: 'Misc' }));
-  clock.advance(1);
-  ok(await call('moveTask', { id: 'C', before: 'B' }));
-  clock.advance(1);
-  const n = opsCount(sqlite);
-  const s = ok(await call('uncheckTask', { id: 'A' }));
-  assert.deepEqual(ids(s), ['A', 'C', 'B']);
-  assert.deepEqual(s.tasks.map((t) => t.position), [1, 2, 3]);
-  assert.deepEqual(s.choice, { project: 'Studio', type: 'Social' });
-  const run = rows().find((r) => r.end_ms == null);
-  assert.equal(run.project, 'Studio');
-  assert.equal(run.start_ms, clock.now());
-  assert.equal(opsCount(sqlite), n + 1);
+  const s = ok(await call('status'));
+  assert.deepEqual(s.tasks, []);
+  assert.equal(s.activeTask, null);
 });
 
 test('liste limitée à 30 tâches à faire : addTask et uncheckTask refusent au-delà', async () => {

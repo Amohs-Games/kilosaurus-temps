@@ -6,7 +6,8 @@
 // Icône près de l'horloge : afficher / masquer, verrouiller la position, toujours au-dessus, lancer
 // au démarrage, ouvrir en grand, quitter. Ctrl + Alt + K affiche ou masque la fenêtre. Le bouton –
 // de la page la réduit dans la barre des tâches, le temps qu'elle ne gêne plus.
-// « Sessions » (barre du haut) et le panneau « Tâches » s'ouvrent dans une deuxième fenêtre.
+// « Sessions » (barre du haut) s'ouvre dans une deuxième fenêtre ; le panneau « Tâches », dans la
+// mini-fenêtre elle-même (la page s'en charge).
 // Les réglages (position, verrou…) sont gardés dans window.json, dans le dossier de l'app.
 // Sauvegardes : une copie vérifiée de toute la base par jour de travail, dans les dossiers
 // `backupDirs` de window.json (PC et Google Drive), au lancement puis toutes les heures.
@@ -113,10 +114,10 @@ function createWindow() {
     settings.y = b.y;
     saveSettings();
   });
-  // « Sessions » et « Tâches » ouvrent une deuxième fenêtre ; les autres liens (« Plus d'infos ») partent dans
-  // Brave, version complète.
+  // « Sessions » ouvre une deuxième fenêtre ; les autres liens (« Plus d'infos ») partent dans Brave,
+  // version complète.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/[?&]vue=(sessions|taches)/.test(url)) openSideWindow(url);
+    if (/[?&]vue=sessions/.test(url)) openSideWindow(url);
     else openInBrowser(url.replace(/[?&]mini=1/, ''));
     return { action: 'deny' };
   });
@@ -140,11 +141,11 @@ function openInBrowser(url) {
   require('child_process').spawn(exe, [url], { detached: true, stdio: 'ignore' }).unref();
 }
 
-// La fenêtre latérale (sessions ou tâches, selon l'URL) : une fenêtre normale, au-dessus si la
-// mini-fenêtre l'est. Une seule à la fois : demander l'autre vue la recharge. À sa fermeture, la
-// mini-fenêtre relit l'état (une session corrigée, une tâche cochée s'y voit tout de suite).
+// La fenêtre des sessions : une fenêtre normale, au-dessus si la mini-fenêtre l'est. Une seule à la
+// fois : la redemander la recharge. À sa fermeture, la mini-fenêtre relit l'état (une session
+// corrigée s'y voit tout de suite).
 function openSideWindow(url) {
-  const title = (/[?&]vue=taches/.test(url) ? 'Tâches' : 'Sessions') + ' — Kilosaurus Temps';
+  const title = 'Sessions — Kilosaurus Temps';
   if (sideWin && !sideWin.isDestroyed()) {
     sideWin.setTitle(title);
     sideWin.loadURL(url);

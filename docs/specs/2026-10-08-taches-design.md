@@ -3,6 +3,10 @@
 > S'ajoute à `2026-10-03-base-de-donnees-design.md` (base, journal `ops`, hors ligne) et à
 > `2026-10-08-sauvegardes-design.md` (journées figées, copie de bureau). Remplace, pour l'écran
 > principal, les boutons de projet qui lancent le compteur.
+>
+> **Remplacée en partie** par `2026-10-12-taches-actives-design.md` : la règle de la tâche du haut
+> (§ 5) n'existe plus, une tâche ne pilote le compteur qu'une fois activée, et son temps est la somme
+> des morceaux passés dessus.
 
 ## Objectif
 

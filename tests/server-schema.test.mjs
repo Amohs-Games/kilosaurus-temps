@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { makeDb, insertRow, at, SCHEMA } from './server-harness.mjs';
+import { readFileSync } from 'node:fs';
 import { fromSqlite } from '../server/db.js';
 import { dayKey, dayStart, nextDayStart, clock, shortDate, localTime, previousDayKey, workDayKey, workDayEnd } from '../server/tz.js';
 
@@ -115,4 +116,23 @@ test('base : tâches figées, ni modifiées ni effacées', () => {
   assert.throws(() => db.prepare("UPDATE archive_tasks SET description = 'x'").run(), /archive figée/);
   assert.throws(() => db.prepare('DELETE FROM archive_tasks').run(), /archive figée/);
   db.exec(SCHEMA);
+});
+
+test('migration 2026-10-12 : une base d’avant reçoit task_id au même rang qu’une base neuve', () => {
+  const { DatabaseSync } = process.getBuiltinModule('node:sqlite');
+  const migration = readFileSync(new URL('../server/migrations/2026-10-12-taches-actives.sql', import.meta.url), 'utf8');
+  // Le schéma d'avant : sans la colonne ni son index.
+  const before = SCHEMA.replace(/^[ \t]*task_id TEXT,[^\n]*\n([ \t]*--[^\n]*\n)?/gm, '').replace(/^CREATE INDEX IF NOT EXISTS entries_task[^\n]*\n/m, '');
+  assert.ok(!/task_id/.test(before), 'schéma d’avant reconstruit');
+  const old = new DatabaseSync(':memory:');
+  old.exec(before);
+  old.exec(migration);
+  old.exec(SCHEMA); // db:schema après la migration : rien ne casse
+  const fresh = makeDb();
+  const cols = (db, table) => db.prepare(`PRAGMA table_info(${table})`).all().map((c) => `${c.name}:${c.type}`);
+  for (const table of ['entries', 'archive_entries']) {
+    assert.deepEqual(cols(old, table), cols(fresh, table), table);
+    assert.equal(cols(fresh, table).at(-1), 'task_id:TEXT', `${table} : task_id en dernier`);
+  }
+  assert.ok(old.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'entries_task'").get());
 });

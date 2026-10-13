@@ -136,21 +136,25 @@ Au premier lancement, l'app demande le code de l'appareil. Elle le garde ensuite
   bascule l’activité sans trou : le temps d’avant reste sous l’ancienne. Arrêté, un tap change
   l’activité du prochain lancement.
 - **Tâches** : une liste du jour, à préparer le matin. L’écran principal montre la tâche du haut
-  (description, projet · activité) ; la cocher fait monter la suivante. Un tap sur la ligne ouvre le
+  (description, projet · activité) avec un bouton **▶** pour l’activer. Un tap sur la ligne ouvre le
   panneau **Tâches** : ajouter (description de 200 caractères au plus, activité, projet), toucher une
-  tâche pour la modifier ou la supprimer, glisser la poignée ≡ pour réordonner, décocher une tâche
-  faite pour la remettre dans la liste. Les tâches cochées depuis 6 h sont listées dans « Faites
-  aujourd’hui » ; elles disparaissent du panneau à 6 h le lendemain. Une tâche n’a jamais l’activité
-  Pause. La liste des tâches à faire tient 30 tâches au plus : au-delà, ajouter ou décocher une
-  tâche est refusé (« Liste pleine »).
-  - **Bascule automatique** : quand la tâche du haut change (cochée, décochée, déplacée,
-    supprimée, ajoutée à une liste vide, ou son projet / son activité modifié), le choix prend
-    son projet et son activité. Compteur en cours,
-    il bascule à la même seconde ; en pause, la pause continue et Reprendre partira sur la nouvelle
-    tâche ; arrêté, seul le choix change.
-  - **Choix manuel** : un projet ou une activité choisi à la main tient jusqu’à ce que la tâche du
-    haut change.
-  - Chaque tâche cochée garde son jour, son début et sa fin ; rien n’en est affiché pour l’instant.
+  tâche pour la modifier ou la supprimer, glisser la poignée ≡ pour réordonner, ▶ pour l’activer, ☐
+  pour la valider, décocher une tâche faite pour la remettre dans la liste. Les tâches validées
+  depuis 6 h sont listées dans « Faites aujourd’hui » ; elles disparaissent du panneau à 6 h le
+  lendemain. Une tâche n’a jamais l’activité Pause. La liste des tâches à faire tient 30 tâches au
+  plus : au-delà, ajouter ou décocher une tâche est refusé (« Liste pleine »).
+  - **Une tâche montrée ne pilote rien** : ajouter, déplacer ou valider une tâche ne touche ni au
+    choix ni au compteur. On peut très bien travailler sans tâche.
+  - **Tâche active** : l’activer met son projet et son activité au choix ; compteur en cours, il
+    bascule dessus à la même seconde. Elle remplace alors la rangée Activité par sa carte : le temps
+    passé dessus en direct, **Valider** et **Désactiver**. Pause, Reprendre, Stop puis ▶ la gardent :
+    le temps repris s’ajoute au sien. Toucher un autre projet la désactive.
+  - **Valider** la tâche active laisse le compteur tourner, même projet, même activité, sans tâche.
+  - **Temps d’une tâche** : chaque morceau de compteur garde la tâche sur laquelle il a tourné ; le
+    temps d’une tâche est leur somme, sur autant de jours qu’il faut. Corriger ou supprimer un morceau
+    corrige ce temps. Il s’affiche dans le panneau après « projet · activité ».
+  - Le ▶ du widget lance « dernier projet · Writing » : si ce n’est pas la tâche active, il la
+    désactive.
 - **Stop** : ferme le compteur. **+ note** : une note sur le compteur en cours.
 - **⏸ Pause** : le compteur continue, marqué pause (même projet) ; **▶ Reprendre** repart sur le
   choix (projet et activité choisis). Les pauses comptent dans le total du jour (« dont N min de
@@ -293,9 +297,8 @@ automatique pointe vers ce dossier : si le dépôt est déplacé, relancez `npm 
 emplacement.
 
 - **Déplacer** : glisser la barre du haut. **Sessions** ouvre la fenêtre des sessions dans une
-  deuxième fenêtre ; à sa fermeture, la mini-fenêtre se met à jour. **Tâches** s’ouvre de même dans
-  sa propre fenêtre : après la mise à jour qui apporte les tâches, redémarrez la mini-fenêtre une
-  fois (icône près de l’horloge → **Quitter**, puis relancez-la). **Plus d'infos ↗** ouvre la
+  deuxième fenêtre ; à sa fermeture, la mini-fenêtre se met à jour. **Tâches** s’ouvre dans la
+  mini-fenêtre elle-même, à la place de l’écran ; ✕ y revient. **Plus d'infos ↗** ouvre la
   version complète (journée, récap, blocs) dans Brave, sinon Chrome, sinon le navigateur par défaut.
 - **Icône près de l'horloge** (clic droit) : afficher / masquer, **Verrouiller la position**,
   **Toujours au-dessus**, **Lancer au démarrage**, remettre dans le coin, ouvrir en grand,
@@ -347,8 +350,10 @@ quelconques (24 h au plus), refusée si elle chevauche une autre session.
   dès l'ouverture suivante de la page : le service worker charge le réseau d'abord et ne garde sa
   copie que pour le hors ligne.
 - **La base** : `server/schema.sql` ne fait que créer ce qui manque ; une modification de table
-  demande sa propre commande SQL. Les tables et triggers ajoutés au schéma s'appliquent avec
-  `npm run db:schema` (création seulement).
+  demande sa propre commande SQL, rangée dans `server/migrations/` et à appliquer une fois, avant
+  `npm run db:schema` et le déploiement :
+  `npx wrangler d1 execute kilosaurus-temps --remote --file server/migrations/<fichier>.sql`. Les
+  tables et triggers ajoutés au schéma s'appliquent avec `npm run db:schema` (création seulement).
 - **L'APK** embarque sa copie du site : il faut le reconstruire et le réinstaller.
 
 ## Développement

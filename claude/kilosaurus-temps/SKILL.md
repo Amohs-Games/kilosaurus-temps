@@ -1,6 +1,6 @@
 ---
 name: kilosaurus-temps
-description: Loguer du temps de travail dans Kilosaurus Temps (la feuille de temps de l'utilisateur) pour l'utilisateur, et gérer sa liste de tâches. À utiliser quand l'utilisateur demande de loguer, déclarer, compter ou noter du temps passé sur un projet, de lancer ou d'arrêter son compteur, de corriger, supprimer ou annuler un log, ou d'ajouter, cocher (« coche ma tâche »), décocher, modifier, supprimer ou réordonner ses tâches.
+description: Loguer du temps de travail dans Kilosaurus Temps (la feuille de temps de l'utilisateur) pour l'utilisateur, et gérer sa liste de tâches. À utiliser quand l'utilisateur demande de loguer, déclarer, compter ou noter du temps passé sur un projet, de lancer ou d'arrêter son compteur, de corriger, supprimer ou annuler un log, ou d'ajouter, activer (« je passe sur telle tâche »), désactiver, valider ou cocher (« coche ma tâche »), décocher, modifier, supprimer ou réordonner ses tâches.
 ---
 
 # Kilosaurus Temps — loguer du temps
@@ -41,9 +41,11 @@ dernière action annulable, `{ opId, summary }`), plus :
 - `choice` : `{ project, type }`, le projet et l'activité choisis, partagés par tous les appareils.
   Compteur en cours, c'est ce qui tourne ; sinon, ce que lancera ▶.
 - `tasks` : la liste de tâches de l'utilisateur. D'abord les tâches à faire dans l'ordre de la liste
-  (la première est « la tâche du haut »), puis les tâches faites depuis le dernier 6 h. Chacune :
-  `{ id, description, project, type, position, done, started }` (`done` et `started` sont `null`
-  pour une tâche à faire).
+  (la première est « la tâche du haut »), puis les tâches validées depuis le dernier 6 h. Chacune :
+  `{ id, description, project, type, position, done, started, spentMs }` (`done` est `null` pour
+  une tâche à faire ; `spentMs` = millisecondes passées dessus, morceau en cours non compris).
+- `activeTask` : l'`id` de la tâche active, ou `null`. `running.task` (et chaque ligne de `today`,
+  `last`, `history`) : la tâche sur laquelle ce morceau de compteur a tourné, ou `null`.
 
 Seule exception : `history` renvoie
 `{ from, to, rows }`.
@@ -71,8 +73,10 @@ réunions…). Si le projet demandé n'existe pas, demande à l'utilisateur plut
 | `editTask` | `id`, `description?`, `project?`, `type?` | Modifie une tâche. |
 | `deleteTask` | `id` | Supprime une tâche (elle revient avec `undo`). |
 | `moveTask` | `id`, `before` (id d'une tâche à faire, ou `null` pour la fin) | Place une tâche à faire juste avant `before`. |
-| `checkTask` | `id` | Coche une tâche : elle passe dans les faites du jour. |
-| `uncheckTask` | `id` | Décoche une tâche : elle reprend sa place dans la liste à faire (refusé si la liste a déjà 30 tâches). |
+| `activateTask` | `id` | Active une tâche à faire : son projet et son activité deviennent le choix, et le temps compté s'inscrit sur elle. |
+| `deactivateTask` | — | Plus de tâche active ; le choix ne change pas. |
+| `checkTask` | `id` | Valide (coche) une tâche : elle passe dans les faites du jour. |
+| `uncheckTask` | `id` | Décoche une tâche : elle reprend sa place dans la liste à faire, non active (refusé si la liste a déjà 30 tâches). |
 | `undo` | `opId` | Annule la dernière action (`status.undo.opId`), puis la précédente au prochain appel. Refusé si une autre action a eu lieu entre-temps. Lis d'abord `status.undo.summary` : n'annule que ta propre action, car un tap dans le sélecteur de l'utilisateur est aussi une action annulable. |
 
 `type` : `Misc` (défaut), `Art`, `Dev`, `Writing`… (liste dans `data.types`). Choisis-le d'après
@@ -81,13 +85,18 @@ Writing) ; dans le doute, demande.
 
 Règles :
 
-- **Tâches** : l'activité d'une tâche ne peut pas être `Pause`. Quand la tâche du haut change
-  (cochée, décochée, déplacée, supprimée, ajoutée à une liste vide, ou son projet / son activité modifié), son
-  projet et son activité deviennent le choix et le compteur en cours bascule dessus à la même
-  seconde : **cocher la tâche du haut change donc le compteur qui tourne**. En pause ou arrêté, seul
-  le choix change. Ne coche une tâche que si l'utilisateur le demande. `undo` annule la coche avec
-  la bascule qu'elle a provoquée. La liste à faire tient 30 tâches au plus : `addTask` et `uncheckTask`
-  sont refusés au-delà (« Liste pleine »).
+- **Tâches** : l'activité d'une tâche ne peut pas être `Pause`. Une tâche ne pilote le compteur
+  qu'une fois **active** : ajouter, déplacer, valider ou supprimer une tâche non active ne touche ni
+  au choix ni au compteur. Une seule tâche active à la fois, la même sur tous les appareils.
+  - Un morceau de compteur qui s'ouvre sur exactement le projet et l'activité de la tâche active
+    s'inscrit sur elle. `activateTask` compteur en cours le fait basculer dessus à la même seconde.
+  - Pause, stop, puis `start` sur le choix gardent la tâche active : le temps repris s'ajoute au sien.
+  - Un `start` ou un `select` sur un autre projet ou une autre activité **désactive** la tâche.
+  - Valider (`checkTask`) la tâche active, `deactivateTask` ou supprimer la tâche active : le compteur
+    continue, même projet, même activité, sans tâche.
+  - Ne valide ou n'active une tâche que si l'utilisateur le demande. `undo` annule l'action avec la
+    bascule qu'elle a provoquée. La liste à faire tient 30 tâches au plus : `addTask` et
+    `uncheckTask` sont refusés au-delà (« Liste pleine »).
 
 - **`id`** : un identifiant unique par nouvelle ligne (un UUID). Si tu renvoies la même requête
   avec le même `id`, rien n'est écrit en double : en cas de doute après une erreur réseau,

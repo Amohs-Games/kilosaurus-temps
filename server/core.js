@@ -24,7 +24,7 @@ const CONTROL_IN_TASK = /[\u0000-\u001F\u007F]/;
 const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
 const TOO_LONG = 'Une session ne peut pas dépasser 24 h : indique d’abord l’heure de fin du compteur en cours.';
 const WRITE_ACTIONS = ['start', 'stop', 'note', 'logBlock', 'logSession', 'addProject', 'deleteEntry', 'editEntry', 'undo', 'select',
-  'addTask', 'editTask', 'deleteTask', 'moveTask', 'checkTask', 'uncheckTask'];
+  'addTask', 'editTask', 'deleteTask', 'moveTask', 'checkTask', 'uncheckTask', 'activateTask', 'deactivateTask'];
 
 // Sauvegardes. Un appel de Worker a droit à 50 requêtes D1 sur l'offre gratuite (chaque instruction
 // d'un batch compte) : figer un jour en coûte 3 (lignes, tâches, résumé), d'où 14 jours au
@@ -66,7 +66,7 @@ const LEGACY_TYPES = { Autre: 'Misc', Narration: 'Writing' };
 
 export const TASK_COLUMNS = ['id', 'description', 'project', 'type', 'position', 'done_day', 'started_ms', 'done_ms', 'source', 'created_ms', 'touched_ms', 'deleted_ms'];
 const SETTING_COLUMNS = ['key', 'value'];
-export const ENTRY_COLUMNS = ['id', 'project', 'kind', 'day', 'start_ms', 'end_ms', 'hours', 'type', 'note', 'source', 'created_ms', 'touched_ms', 'deleted_ms'];
+export const ENTRY_COLUMNS = ['id', 'project', 'kind', 'day', 'start_ms', 'end_ms', 'hours', 'type', 'note', 'source', 'created_ms', 'touched_ms', 'deleted_ms', 'task_id'];
 export const ACTIVE = 'deleted_ms IS NULL';
 
 export class AppError {
@@ -125,7 +125,7 @@ function iso(ms) { return ms == null ? null : new Date(ms).toISOString(); }
 export function toApi(r) {
   if (!r) return null;
   const hours = r.kind === 'block' ? r.hours : (r.end_ms == null ? null : Math.round((r.end_ms - r.start_ms) / 36000) / 100);
-  return { id: r.id, project: r.project, type: typeOf(r), date: r.day, start: iso(r.start_ms), end: iso(r.end_ms), hours, note: r.note || '', source: r.source };
+  return { id: r.id, project: r.project, type: typeOf(r), date: r.day, start: iso(r.start_ms), end: iso(r.end_ms), hours, note: r.note || '', source: r.source, task: r.task_id || null };
 }
 
 // État des sauvegardes, pour le bandeau d'alerte : dernière copie de bureau complète, et premier
@@ -165,16 +165,18 @@ export function choiceChanges(cfg, project, type) {
   return changes;
 }
 
-// Bascule du compteur en cours vers (project, type) à l'instant `at`. Rien à faire sans compteur, en
-// pause, déjà sur ce choix, ou si le compteur est oublié (plus de 24 h) : seul le choix change alors.
-export async function switchTo(ctx, run, project, type, at) {
+// Bascule du compteur en cours vers (project, type, tâche liée) à l'instant `at` : le morceau en cours
+// se ferme et un autre s'ouvre à la même seconde dès que l'un des trois change. Rien à faire sans
+// compteur, en pause, déjà sur ce morceau, ou si le compteur est oublié (plus de 24 h) : seul le
+// choix change alors.
+export async function switchTo(ctx, run, project, type, at, taskId = null) {
   if (!run || typeOf(run) === PAUSE) return [];
-  if (run.project === project && typeOf(run) === type) return [];
+  if (run.project === project && typeOf(run) === type && (run.task_id ?? null) === taskId) return [];
   const start = Math.max(at, run.start_ms);
   if (start - run.start_ms > MAX_SESSION_MS) return [];
   return [
     change(run, { ...run, end_ms: start, touched_ms: ctx.now }),
-    change(null, newSession(ctx, { id: crypto.randomUUID(), project, start, type })),
+    change(null, newSession(ctx, { id: crypto.randomUUID(), project, start, type, taskId })),
   ];
 }
 
@@ -183,15 +185,23 @@ export async function switchTo(ctx, run, project, type, at) {
 async function todoTasks(db) {
   return db.all('SELECT * FROM tasks WHERE deleted_ms IS NULL AND done_ms IS NULL ORDER BY position, created_ms, id');
 }
+// Avec le temps passé sur chacune : les sessions terminées, non supprimées, liées à la tâche (index
+// sur task_id : seules ces lignes sont lues). Le morceau en cours n'y est pas, l'écran l'ajoute.
 async function listTasks(db, nowMs) {
   const since = localTime(workDayKey(nowMs), 6);
-  const [todo, done] = await Promise.all([
+  const [todo, done, spent] = await Promise.all([
     todoTasks(db),
     db.all('SELECT * FROM tasks WHERE deleted_ms IS NULL AND done_ms >= ? ORDER BY done_ms', [since]),
+    db.all(
+      `SELECT task_id, SUM(end_ms - start_ms) AS ms FROM entries WHERE ${ACTIVE} AND kind = 'session' AND end_ms IS NOT NULL
+       AND task_id IN (SELECT id FROM tasks WHERE deleted_ms IS NULL AND (done_ms IS NULL OR done_ms >= ?)) GROUP BY task_id`,
+      [since],
+    ),
   ]);
+  const spentById = new Map(spent.map((r) => [r.task_id, r.ms]));
   return [...todo, ...done].map((r) => ({
     id: r.id, description: r.description, project: r.project, type: typeOf(r), position: r.position,
-    done: iso(r.done_ms), started: iso(r.started_ms),
+    done: iso(r.done_ms), started: iso(r.started_ms), spentMs: spentById.get(r.id) || 0,
   }));
 }
 
@@ -201,6 +211,7 @@ async function status(ctx) {
   const [cfg, projects, lastRow, todayRows, undo, tasks] = await Promise.all([
     settings(db), projectNames(db), last(db), today(db, ctx.now, run), undoTarget(db), listTasks(db, ctx.now),
   ]);
+  const active = await readActive(db, cfg);
   const backup = await backupState(db, cfg, ctx.now);
   return {
     me: cfg.me || '',
@@ -213,6 +224,7 @@ async function status(ctx) {
     last: toApi(lastRow),
     choice: await readChoice(db, cfg, run, lastRow, projects),
     tasks,
+    activeTask: active ? active.id : null,
     types: TYPES,
     today: todayRows.map(toApi),
     undo: undo ? { opId: undo.id, summary: undo.summary } : null,
@@ -276,12 +288,14 @@ function newSession(ctx, f) {
   return {
     id: f.id, project: f.project, kind: 'session', day: dayKey(f.start), start_ms: f.start, end_ms: f.end ?? null, hours: null,
     type: f.type, note: f.note || '', source: source(ctx), created_ms: ctx.now, touched_ms: ctx.now, deleted_ms: null,
+    task_id: f.taskId ?? null,
   };
 }
 function newBlock(ctx, f) {
   return {
     id: f.id, project: f.project, kind: 'block', day: f.day, start_ms: null, end_ms: null, hours: f.hours,
     type: f.type, note: f.note || '', source: source(ctx), created_ms: ctx.now, touched_ms: ctx.now, deleted_ms: null,
+    task_id: null,
   };
 }
 
@@ -402,7 +416,7 @@ export async function freezeDays({ db, now }) {
   return { frozen, through: next };
 }
 
-// ---- Tâches : validation et règle de la tâche du haut ----
+// ---- Tâches : validation et tâche active ----
 
 function cleanDescription(value) {
   if (typeof value !== 'string') fail('La description doit être du texte.');
@@ -431,29 +445,34 @@ async function requireRoom(db) {
   return todo;
 }
 
-function topTask(list) {
-  return list.reduce((best, t) => (!best || t.position < best.position || (t.position === best.position && (t.created_ms < best.created_ms || (t.created_ms === best.created_ms && t.id < best.id))) ? t : best), null);
+// La tâche active (réglage `active_task`) si elle est encore à faire et non supprimée ; sinon aucune
+// (un réglage laissé par une annulation ne doit jamais remettre une tâche finie au volant).
+async function readActive(db, cfg) {
+  if (!cfg.active_task) return null;
+  const row = await db.first('SELECT * FROM tasks WHERE id = ?', [cfg.active_task]);
+  return row && row.deleted_ms == null && row.done_ms == null ? row : null;
 }
 
-// Applique `taskChanges` et, si la tâche du haut (première à faire) change — autre tâche, ou même
-// tâche avec un autre projet ou une autre activité —, son projet et son activité deviennent le choix
-// et le compteur en marche bascule à l'instant de l'action. Tout dans une seule entrée de journal.
-async function withTopRule(ctx, action, summary, taskChanges) {
-  const todo = await todoTasks(ctx.db);
-  const afterById = new Map(todo.map((t) => [t.id, t]));
-  for (const c of taskChanges) {
-    if (c.after && c.after.deleted_ms == null && c.after.done_ms == null) afterById.set(c.key, c.after);
-    else afterById.delete(c.key);
-  }
-  const before = topTask(todo);
-  const after = topTask([...afterById.values()]);
-  const changes = [...taskChanges];
-  if (after && (!before || before.id !== after.id || before.project !== after.project || before.type !== after.type)) {
-    const type = canonicalType(after.type);
-    changes.push(...choiceChanges(await settings(ctx.db), after.project, type));
-    changes.push(...(await switchTo(ctx, await running(ctx.db), after.project, type, actionTime(ctx))));
-  }
-  await commit(ctx, action, summary, changes);
+// Le réglage qui porte la tâche active, s'il change (id, ou null pour aucune).
+function activeChanges(cfg, id) {
+  const current = cfg.active_task ?? null;
+  if (current === id) return [];
+  return [change(current === null ? null : { key: 'active_task', value: current }, id === null ? null : { key: 'active_task', value: id }, 'settings')];
+}
+
+// Le lien d'un morceau qui s'ouvre sur (project, type) : la tâche active si elle a exactement ce projet
+// et cette activité, sinon aucune.
+function linkFor(active, project, type) {
+  return active && active.project === project && typeOf(active) === type ? active.id : null;
+}
+
+// Plus de tâche active : le choix ne bouge pas ; un compteur en marche sur elle continue, même projet,
+// même activité, sans lien, à l'instant de l'action.
+async function deactivation(ctx, cfg, run, at) {
+  return [
+    ...activeChanges(cfg, null),
+    ...(run ? await switchTo(ctx, run, run.project, typeOf(run), at, null) : []),
+  ];
 }
 
 // ---- Actions ----
@@ -470,8 +489,13 @@ export const actions = {
     const run = await running(ctx.db);
     const type = requireType(p.type, run ? typeOf(run) : DEFAULT_TYPE);
     if (await byId(ctx.db, id)) return;
+    const cfg = await settings(ctx.db);
+    const active = await readActive(ctx.db, cfg);
+    // Une pause n'a pas de lien et garde la tâche active ; un autre projet ou une autre activité la
+    // désactivent.
+    const taskId = type === PAUSE ? null : linkFor(active, project, type);
     // Relancer ce qui tourne déjà n'est pas une action.
-    if (run && run.project === project && typeOf(run) === type) return;
+    if (run && run.project === project && typeOf(run) === type && (run.task_id ?? null) === taskId) return;
 
     let start = actionTime(ctx) - offset * 60000;
     const changes = [];
@@ -480,13 +504,17 @@ export const actions = {
       if (start - run.start_ms > MAX_SESSION_MS) fail(TOO_LONG);
       changes.push(change(run, { ...run, end_ms: start, touched_ms: ctx.now }));
     }
-    changes.push(change(null, newSession(ctx, { id, project, start, type, note })));
-    if (type !== PAUSE) changes.push(...choiceChanges(await settings(ctx.db), project, type));
+    changes.push(change(null, newSession(ctx, { id, project, start, type, note, taskId })));
+    if (type !== PAUSE) {
+      changes.push(...choiceChanges(cfg, project, type));
+      if (active && !taskId) changes.push(...activeChanges(cfg, null));
+    }
     await commit(ctx, 'start', `${run ? 'Bascule' : 'Lancement'} ${project} · ${type} à ${clock(start)}`, changes);
   },
 
   // Change le projet et/ou l'activité du choix partagé. Si un compteur tourne (hors pause), il bascule
-  // sur le nouveau choix à l'instant du tap ; en pause ou à l'arrêt, seul le choix change.
+  // sur le nouveau choix à l'instant du tap ; en pause ou à l'arrêt, seul le choix change. Un choix
+  // différent de la tâche active la désactive.
   async select(ctx, p) {
     const { db } = ctx;
     const run = await running(db);
@@ -495,11 +523,14 @@ export const actions = {
     const project = p.project === undefined ? current.project : await requireProject(ctx, p.project);
     const type = requireType(p.type, current.type);
     if (type === PAUSE) fail('Pause n’est pas une activité à choisir.');
+    const active = await readActive(db, cfg);
+    const taskId = linkFor(active, project, type);
     // Le choix visé est déjà le choix calculé : on n'écrit pas les réglages d'un choix par défaut.
     const same = project === current.project && type === current.type;
     await commit(ctx, 'select', `Choix ${project} · ${type}`, [
       ...(same ? [] : choiceChanges(cfg, project, type)),
-      ...(await switchTo(ctx, run, project, type, actionTime(ctx))),
+      ...(active && !taskId ? activeChanges(cfg, null) : []),
+      ...(await switchTo(ctx, run, project, type, actionTime(ctx), taskId)),
     ]);
   },
 
@@ -631,9 +662,11 @@ export const actions = {
       id, description, project, type, position, done_day: null, started_ms: null, done_ms: null,
       source: source(ctx), created_ms: ctx.now, touched_ms: ctx.now, deleted_ms: null,
     };
-    await withTopRule(ctx, 'addTask', `Tâche ajoutée : ${description}`, [change(null, task, 'tasks')]);
+    await commit(ctx, 'addTask', `Tâche ajoutée : ${description}`, [change(null, task, 'tasks')]);
   },
 
+  // La tâche active dont le projet ou l'activité change : le choix suit et le compteur en marche
+  // bascule, lien gardé.
   async editTask(ctx, p) {
     const row = await requireLiveTask(ctx, p);
     const next = { ...row };
@@ -642,7 +675,15 @@ export const actions = {
     if (p.type !== undefined) next.type = requireTaskType(p.type, row.type);
     if (['description', 'project', 'type'].every((f) => next[f] === row[f])) return;
     next.touched_ms = ctx.now;
-    await withTopRule(ctx, 'editTask', `Tâche modifiée : ${next.description}`, [change(row, next, 'tasks')]);
+    const changes = [change(row, next, 'tasks')];
+    const cfg = await settings(ctx.db);
+    const active = await readActive(ctx.db, cfg);
+    if (active && active.id === row.id && (next.project !== row.project || next.type !== row.type)) {
+      const type = typeOf(next);
+      changes.push(...choiceChanges(cfg, next.project, type));
+      changes.push(...(await switchTo(ctx, await running(ctx.db), next.project, type, actionTime(ctx), row.id)));
+    }
+    await commit(ctx, 'editTask', `Tâche modifiée : ${next.description}`, changes);
   },
 
   async deleteTask(ctx, p) {
@@ -650,7 +691,11 @@ export const actions = {
     const row = await ctx.db.first('SELECT * FROM tasks WHERE id = ?', [id]);
     if (!row) fail('Tâche introuvable.');
     if (row.deleted_ms != null) return;
-    await withTopRule(ctx, 'deleteTask', `Tâche supprimée : ${row.description}`, [change(row, { ...row, deleted_ms: ctx.now, touched_ms: ctx.now }, 'tasks')]);
+    const changes = [change(row, { ...row, deleted_ms: ctx.now, touched_ms: ctx.now }, 'tasks')];
+    const cfg = await settings(ctx.db);
+    const active = await readActive(ctx.db, cfg);
+    if (active && active.id === row.id) changes.push(...(await deactivation(ctx, cfg, await running(ctx.db), actionTime(ctx))));
+    await commit(ctx, 'deleteTask', `Tâche supprimée : ${row.description}`, changes);
   },
 
   async moveTask(ctx, p) {
@@ -672,21 +717,23 @@ export const actions = {
       if (t.position !== i + 1) changes.push(change(t, { ...t, position: i + 1, touched_ms: ctx.now }, 'tasks'));
     });
     if (!changes.length) return;
-    await withTopRule(ctx, 'moveTask', `Tâche déplacée : ${row.description}`, changes);
+    await commit(ctx, 'moveTask', `Tâche déplacée : ${row.description}`, changes);
   },
 
+  // Valide. La tâche active est désactivée : le compteur continue sans elle, à la même seconde.
   async checkTask(ctx, p) {
     const row = await requireLiveTask(ctx, p);
     if (row.done_ms != null) return;
     const doneMs = actionTime(ctx);
     const doneDay = workDayKey(doneMs);
-    const previous = await ctx.db.first(
-      'SELECT MAX(done_ms) AS m FROM tasks WHERE deleted_ms IS NULL AND id <> ? AND done_day = ? AND done_ms <= ?',
-      [row.id, doneDay, doneMs],
-    );
-    const startedMs = previous && previous.m != null ? previous.m : localTime(doneDay, 6);
+    const cfg = await settings(ctx.db);
+    const active = await readActive(ctx.db, cfg);
+    const changes = active && active.id === row.id ? await deactivation(ctx, cfg, await running(ctx.db), doneMs) : [];
+    // Début = le premier morceau passé dessus (le morceau fermé par cette validation compris).
+    const first = await ctx.db.first(`SELECT MIN(start_ms) AS m FROM entries WHERE ${ACTIVE} AND kind = 'session' AND task_id = ?`, [row.id]);
+    const startedMs = first && first.m != null && first.m <= doneMs ? first.m : null;
     const next = { ...row, done_ms: doneMs, done_day: doneDay, started_ms: startedMs, touched_ms: ctx.now };
-    await withTopRule(ctx, 'checkTask', `Tâche cochée : ${row.description}`, [change(row, next, 'tasks')]);
+    await commit(ctx, 'checkTask', `Tâche validée : ${row.description}`, [change(row, next, 'tasks'), ...changes]);
   },
 
   async uncheckTask(ctx, p) {
@@ -700,7 +747,30 @@ export const actions = {
     for (const t of todo) {
       if (t.position >= row.position) changes.push(change(t, { ...t, position: t.position + 1, touched_ms: ctx.now }, 'tasks'));
     }
-    await withTopRule(ctx, 'uncheckTask', `Tâche décochée : ${row.description}`, changes);
+    await commit(ctx, 'uncheckTask', `Tâche dévalidée : ${row.description}`, changes);
+  },
+
+  // La tâche prend le volant : son projet et son activité deviennent le choix, et un compteur en
+  // marche bascule dessus, même si seul le lien change.
+  async activateTask(ctx, p) {
+    const row = await requireLiveTask(ctx, p);
+    if (row.done_ms != null) fail('Cette tâche est déjà validée.');
+    const cfg = await settings(ctx.db);
+    const active = await readActive(ctx.db, cfg);
+    if (active && active.id === row.id) return;
+    const type = typeOf(row);
+    await commit(ctx, 'activateTask', `Tâche activée : ${row.description}`, [
+      ...activeChanges(cfg, row.id),
+      ...choiceChanges(cfg, row.project, type),
+      ...(await switchTo(ctx, await running(ctx.db), row.project, type, actionTime(ctx), row.id)),
+    ]);
+  },
+
+  async deactivateTask(ctx) {
+    const cfg = await settings(ctx.db);
+    const active = await readActive(ctx.db, cfg);
+    if (!active) return;
+    await commit(ctx, 'deactivateTask', `Tâche désactivée : ${active.description}`, await deactivation(ctx, cfg, await running(ctx.db), actionTime(ctx)));
   },
 
   // Annule l'action opId, si c'est la dernière non annulée. Les changements sont défaits dans l'ordre
